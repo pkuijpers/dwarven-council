@@ -15,15 +15,8 @@ if [ ! -d "$DFHACK_SCRIPTS" ]; then
     exit 1
 fi
 
-# Remove old cached version from lua/ directory if it exists
-if [ -f "$DFHACK_LUA/dwarven-common.lua" ]; then
-    echo "Removing old cached version from lua/ directory..."
-    rm -v "$DFHACK_LUA/dwarven-common.lua"
-fi
-
-# Copy all scripts (including common library) to scripts directory
+# Copy all scripts to scripts directory
 echo "Installing Dwarven Governance scripts..."
-cp -v dwarven-common.lua "$DFHACK_SCRIPTS/"
 cp -v dwarven-coop.lua "$DFHACK_SCRIPTS/"
 cp -v dwarven-reich.lua "$DFHACK_SCRIPTS/"
 cp -v dwarven-corp.lua "$DFHACK_SCRIPTS/"

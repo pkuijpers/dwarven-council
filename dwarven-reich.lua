@@ -13,8 +13,98 @@ local json = require('json')
 local argparse = require('argparse')
 local utils = require('utils')
 
--- Load common library
-local common = dofile(dfhack.getHackPath() .. 'scripts/dwarven-common.lua')
+-- ============================================================
+-- Utility Functions
+-- ============================================================
+
+local function safe_get(fn, default)
+    local ok, result = pcall(fn)
+    return ok and result or default
+end
+
+local function plural(n, word, plural_word)
+    return n == 1 and (n .. " " .. word) or (n .. " " .. (plural_word or word .. "s"))
+end
+
+local function pct(n, total)
+    if total == 0 then return "0%" end
+    return math.floor((n / total) * 100) .. "%"
+end
+
+local function status_indicator(status)
+    local indicators = {
+        critical = "!!",
+        low = "!",
+        adequate = "OK",
+        abundant = "++"
+    }
+    return indicators[status] or "?"
+end
+
+-- ============================================================
+-- DFHack API Compatibility Helpers
+-- ============================================================
+
+local function translate_name(name_obj, in_english)
+    if dfhack.translation and dfhack.translation.translateName then
+        return dfhack.translation.translateName(name_obj, in_english)
+    end
+    if dfhack.TranslateName then
+        return dfhack.TranslateName(name_obj, in_english)
+    end
+    return tostring(name_obj)
+end
+
+local function is_military(unit)
+    if not unit.military then
+        return false
+    end
+    local squad_id = unit.military.squad_id
+    if squad_id and squad_id ~= -1 then
+        local squad = df.squad.find(squad_id)
+        return squad ~= nil
+    end
+    return false
+end
+
+local function get_fortress_info()
+    local site = df.global.world.world_data.active_site[0]
+    if not site then
+        return { name = "Unknown", name_english = "Unknown Fortress", founded_year = 0 }
+    end
+    return {
+        name = translate_name(site.name, false),
+        name_english = translate_name(site.name, true),
+        founded_year = safe_get(function() return site.created_year end, 0)
+    }
+end
+
+local function get_buildings_summary()
+    local counts = {
+        workshops = 0,
+        furnaces = 0,
+        beds = 0,
+        tables = 0,
+        chairs = 0
+    }
+
+    for _, bld in ipairs(df.global.world.buildings.all) do
+        local btype = bld:getType()
+        if btype == df.building_type.Workshop then
+            counts.workshops = counts.workshops + 1
+        elseif btype == df.building_type.Furnace then
+            counts.furnaces = counts.furnaces + 1
+        elseif btype == df.building_type.Bed then
+            counts.beds = counts.beds + 1
+        elseif btype == df.building_type.Table then
+            counts.tables = counts.tables + 1
+        elseif btype == df.building_type.Chair then
+            counts.chairs = counts.chairs + 1
+        end
+    end
+
+    return counts
+end
 
 -- ============================================================
 -- Configuration
@@ -108,7 +198,7 @@ local function get_date()
         season = season,
         tick = tick,
         -- Reich year counts from founding
-        reich_year = year - common.safe_get(function() 
+        reich_year = year - safe_get(function() 
             return df.global.world.world_data.active_site[0].created_year 
         end, year) + 1
     }
@@ -121,7 +211,7 @@ local function get_stonefather()
             local profession = df.profession[unit.profession]
             if profession and profession:find("EXPEDITION_LEADER") then
                 return {
-                    name = common.translate_name(unit.name, false),
+                    name = translate_name(unit.name, false),
                     id = unit.id
                 }
             end
@@ -132,7 +222,7 @@ local function get_stonefather()
         if dfhack.units.isCitizen(unit) and dfhack.units.isAlive(unit)
            and not dfhack.units.isChild(unit) then
             return {
-                name = common.translate_name(unit.name, false),
+                name = translate_name(unit.name, false),
                 id = unit.id
             }
         end
@@ -178,7 +268,7 @@ local function analyze_population()
                 end
             end
             
-            if common.is_military(unit) then
+            if is_military(unit) then
                 summary.military = summary.military + 1
             end
             
@@ -251,9 +341,9 @@ local function get_resources()
         food = { count = food_count, status = status_for_count(food_count) },
         drink = { count = drink_count, status = status_for_count(drink_count) },
         wealth = {
-            total = common.safe_get(function() return df.global.plotinfo.wealth.total end, 0),
-            created = common.safe_get(function() return df.global.plotinfo.wealth.created end, 0),
-            imported = common.safe_get(function() return df.global.plotinfo.wealth.imported end, 0)
+            total = safe_get(function() return df.global.plotinfo.wealth.total end, 0),
+            created = safe_get(function() return df.global.plotinfo.wealth.created end, 0),
+            imported = safe_get(function() return df.global.plotinfo.wealth.imported end, 0)
         }
     }
 end
@@ -272,7 +362,7 @@ local function get_military()
             end
             if member_count > 0 then
                 table.insert(squads, {
-                    name = common.translate_name(squad.name, false),
+                    name = translate_name(squad.name, false),
                     members = member_count
                 })
             end
@@ -329,12 +419,12 @@ end
 local function collect_state()
     return {
         date = get_date(),
-        fortress = common.get_fortress_info(),
+        fortress = get_fortress_info(),
         stonefather = get_stonefather(),
         population = analyze_population(),
         resources = get_resources(),
         military = get_military(),
-        buildings = common.get_buildings_summary(),
+        buildings = get_buildings_summary(),
         events = get_recent_events()
     }
 end
@@ -410,8 +500,8 @@ local function generate_report(state)
         string.format("  Militia:             %d (defenders of the Reich)", pop.military),
         string.format("  Wounded:             %d", pop.injured),
         "",
-        string.format("Productive elements:   %d (%s)", pop.productive, common.pct(pop.productive, pop.adults)),
-        string.format("Idle elements:         %d (%s) %s", pop.idle, common.pct(pop.idle, pop.adults),
+        string.format("Productive elements:   %d (%s)", pop.productive, pct(pop.productive, pop.adults)),
+        string.format("Idle elements:         %d (%s) %s", pop.idle, pct(pop.idle, pop.adults),
             pop.idle > 5 and "!" or ""),
         "",
         "-- Loyalty Index ---------------------------------------------",
@@ -444,9 +534,9 @@ local function generate_report(state)
     table.insert(lines, "==============================================================")
     table.insert(lines, "")
     table.insert(lines, string.format("Food reserve:    %s %s (%d units)",
-        common.status_indicator(res.food.status), res.food.status:upper(), res.food.count))
+        status_indicator(res.food.status), res.food.status:upper(), res.food.count))
     table.insert(lines, string.format("Alcohol reserve: %s %s (%d units)",
-        common.status_indicator(res.drink.status), res.drink.status:upper(), res.drink.count))
+        status_indicator(res.drink.status), res.drink.status:upper(), res.drink.count))
     table.insert(lines, string.format("Reich treasury:  %d coins", res.wealth.total))
     table.insert(lines, "")
     
@@ -456,7 +546,7 @@ local function generate_report(state)
     table.insert(lines, "==============================================================")
     table.insert(lines, "")
     table.insert(lines, string.format("Total militia: %d warriors (%s of population)",
-        pop.military, common.pct(pop.military, pop.total)))
+        pop.military, pct(pop.military, pop.total)))
     for _, squad in ipairs(mil.squads) do
         table.insert(lines, string.format("  - %s: %d fighters", squad.name, squad.members))
     end
@@ -607,9 +697,10 @@ local function build_user_prompt(state, report)
     return prompt
 end
 
--- Use common library for LLM calls
-local function call_llm(system_prompt, user_prompt)
-    return common.call_llm(CONFIG, system_prompt, user_prompt, "Reich")
+local function print_llm_prompt(system_prompt, user_prompt)
+    -- Combine system and user prompts for standard chat UIs
+    local combined_prompt = system_prompt .. "\n\n" .. user_prompt
+    print(combined_prompt)
 end
 
 -- ============================================================
@@ -655,49 +746,11 @@ local function cmd_decree()
     print("")
     
     local report = generate_report(state)
-    print(report)
-    print("")
-    
-    if CONFIG.api_key == "your-api-key-here" or CONFIG.api_key == "" then
-        print("+==============================================================+")
-        print("|  ERROR: The oracle is unreachable.                           |")
-        print("|  Configure ANTHROPIC_API_KEY.                                |")
-        print("+==============================================================+")
-        return
-    end
-    
     local system_prompt = build_system_prompt(state)
     local user_prompt = build_user_prompt(state, report)
-    local response = call_llm(system_prompt, user_prompt)
-    
-    if response then
-        print("")
-        print("+==============================================================+")
-        print("|              THE STONEFATHER HAS SPOKEN                      |")
-        print("+==============================================================+")
-        print("")
-        print(response)
-        print("")
-        
-        local session = {
-            date = state.date,
-            fortress = state.fortress.name_english,
-            stonefather = sf.name,
-            loyalty = state.population.loyalty,
-            report = report,
-            decree = response,
-            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-        }
-        
-        local session_file = string.format("%s/decree_%d_%s.json",
-            CONFIG.output_dir, state.date.year, state.date.season)
-        local f = io.open(session_file, "w")
-        f:write(json.encode(session))
-        f:close()
-        print("[Granite Decree carved: " .. session_file .. "]")
-    else
-        print("[Reich] The ceremony could not be completed.")
-    end
+
+    -- Print the prompt for manual copy/paste to LLM
+    print_llm_prompt(system_prompt, user_prompt)
 end
 
 -- ============================================================

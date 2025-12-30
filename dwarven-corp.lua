@@ -15,8 +15,98 @@ local json = require('json')
 local argparse = require('argparse')
 local utils = require('utils')
 
--- Load common library
-local common = dofile(dfhack.getHackPath() .. 'scripts/dwarven-common.lua')
+-- ============================================================
+-- Utility Functions
+-- ============================================================
+
+local function safe_get(fn, default)
+    local ok, result = pcall(fn)
+    return ok and result or default
+end
+
+local function plural(n, word, plural_word)
+    return n == 1 and (n .. " " .. word) or (n .. " " .. (plural_word or word .. "s"))
+end
+
+local function pct(n, total)
+    if total == 0 then return "0%" end
+    return math.floor((n / total) * 100) .. "%"
+end
+
+local function status_indicator(status)
+    local indicators = {
+        critical = "!!",
+        low = "!",
+        adequate = "OK",
+        abundant = "++"
+    }
+    return indicators[status] or "?"
+end
+
+-- ============================================================
+-- DFHack API Compatibility Helpers
+-- ============================================================
+
+local function translate_name(name_obj, in_english)
+    if dfhack.translation and dfhack.translation.translateName then
+        return dfhack.translation.translateName(name_obj, in_english)
+    end
+    if dfhack.TranslateName then
+        return dfhack.TranslateName(name_obj, in_english)
+    end
+    return tostring(name_obj)
+end
+
+local function is_military(unit)
+    if not unit.military then
+        return false
+    end
+    local squad_id = unit.military.squad_id
+    if squad_id and squad_id ~= -1 then
+        local squad = df.squad.find(squad_id)
+        return squad ~= nil
+    end
+    return false
+end
+
+local function get_fortress_info()
+    local site = df.global.world.world_data.active_site[0]
+    if not site then
+        return { name = "Unknown", name_english = "Unknown Fortress", founded_year = 0 }
+    end
+    return {
+        name = translate_name(site.name, false),
+        name_english = translate_name(site.name, true),
+        founded_year = safe_get(function() return site.created_year end, 0)
+    }
+end
+
+local function get_buildings_summary()
+    local counts = {
+        workshops = 0,
+        furnaces = 0,
+        beds = 0,
+        tables = 0,
+        chairs = 0
+    }
+
+    for _, bld in ipairs(df.global.world.buildings.all) do
+        local btype = bld:getType()
+        if btype == df.building_type.Workshop then
+            counts.workshops = counts.workshops + 1
+        elseif btype == df.building_type.Furnace then
+            counts.furnaces = counts.furnaces + 1
+        elseif btype == df.building_type.Bed then
+            counts.beds = counts.beds + 1
+        elseif btype == df.building_type.Table then
+            counts.tables = counts.tables + 1
+        elseif btype == df.building_type.Chair then
+            counts.chairs = counts.chairs + 1
+        end
+    end
+
+    return counts
+end
 
 -- ============================================================
 -- Configuration
@@ -215,7 +305,7 @@ local function get_ceo()
             local profession = df.profession[unit.profession]
             if profession and profession:find("EXPEDITION_LEADER") then
                 return {
-                    name = common.translate_name(unit.name, false),
+                    name = translate_name(unit.name, false),
                     id = unit.id
                 }
             end
@@ -225,7 +315,7 @@ local function get_ceo()
         if dfhack.units.isCitizen(unit) and dfhack.units.isAlive(unit)
            and not dfhack.units.isChild(unit) then
             return {
-                name = common.translate_name(unit.name, false),
+                name = translate_name(unit.name, false),
                 id = unit.id
             }
         end
@@ -313,7 +403,7 @@ local function analyze_population()
                 end
             end
             
-            if common.is_military(unit) then
+            if is_military(unit) then
                 summary.military = summary.military + 1
             end
             
@@ -385,9 +475,9 @@ local function get_resources()
         else return "critical" end
     end
     
-    local wealth = common.safe_get(function() return df.global.plotinfo.wealth.total end, 0)
-    local created = common.safe_get(function() return df.global.plotinfo.wealth.created end, 0)
-    local imported = common.safe_get(function() return df.global.plotinfo.wealth.imported end, 0)
+    local wealth = safe_get(function() return df.global.plotinfo.wealth.total end, 0)
+    local created = safe_get(function() return df.global.plotinfo.wealth.created end, 0)
+    local imported = safe_get(function() return df.global.plotinfo.wealth.imported end, 0)
     
     return {
         food = { count = food_count, status = status_for_count(food_count) },
@@ -416,7 +506,7 @@ local function get_military()
             end
             if member_count > 0 then
                 table.insert(squads, {
-                    name = common.translate_name(squad.name, false),
+                    name = translate_name(squad.name, false),
                     members = member_count
                 })
             end
@@ -457,12 +547,12 @@ end
 local function collect_state()
     return {
         date = get_date(),
-        fortress = common.get_fortress_info(),
+        fortress = get_fortress_info(),
         ceo = get_ceo(),
         population = analyze_population(),
         resources = get_resources(),
         military = get_military(),
-        buildings = common.get_buildings_summary(),
+        buildings = get_buildings_summary(),
         events = get_recent_events()
     }
 end
@@ -470,12 +560,12 @@ end
 local function collect_state()
     return {
         date = get_date(),
-        fortress = common.get_fortress_info(),
+        fortress = get_fortress_info(),
         ceo = get_ceo(),
         population = analyze_population(),
         resources = get_resources(),
         military = get_military(),
-        buildings = common.get_buildings_summary(),
+        buildings = get_buildings_summary(),
         events = get_recent_events()
     }
 end
@@ -507,7 +597,7 @@ local function identify_risks(state)
         table.insert(risks, {
             level = "HIGH",
             category = "HR",
-            description = common.plural(pop.attrition_risk, "employee") .. " flagged as attrition risk"
+            description = plural(pop.attrition_risk, "employee") .. " flagged as attrition risk"
         })
     end
     if pop.idle > 5 then
@@ -591,9 +681,9 @@ local function generate_dashboard(state)
         "| OPERATIONS      | ACTUAL      | TARGET      | STATUS       |",
         "+-----------------+-------------+-------------+--------------+",
         string.format("| Food Inventory  | %4d units  | 200         | %s %s         |",
-            res.food.count, common.status_indicator(res.food.status), res.food.status),
+            res.food.count, status_indicator(res.food.status), res.food.status),
         string.format("| Beverage Inv.   | %4d units  | 200         | %s %s         |",
-            res.drink.count, common.status_indicator(res.drink.status), res.drink.status),
+            res.drink.count, status_indicator(res.drink.status), res.drink.status),
         string.format("| Runway          | %4d days   | 90          | %s            |",
             res.runway_days, res.runway_days >= 90 and "OK" or "!"),
         string.format("| Facilities      | %4d        | --          | --           |", 
@@ -643,7 +733,7 @@ local function generate_dashboard(state)
     table.insert(lines, "==============================================================")
     table.insert(lines, "")
     table.insert(lines, string.format("  Security FTEs: %d (%s of workforce)", 
-        pop.military, common.pct(pop.military, pop.total_headcount)))
+        pop.military, pct(pop.military, pop.total_headcount)))
     for _, squad in ipairs(mil.squads) do
         table.insert(lines, string.format("    * %s: %d operatives", squad.name, squad.members))
     end
@@ -808,10 +898,14 @@ local function build_user_prompt(state, dashboard)
     return prompt
 end
 
--- Use common library for LLM calls
-local function call_llm(system_prompt, user_prompt)
-    return common.call_llm(CONFIG, system_prompt, user_prompt, "Corp")
+local function print_llm_prompt(system_prompt, user_prompt)
+    -- Combine system and user prompts for standard chat UIs
+    local combined_prompt = system_prompt .. "\n\n" .. user_prompt
+    print(combined_prompt)
 end
+
+-- ============================================================
+-- Commands
 -- ============================================================
 
 local function cmd_status()
@@ -868,7 +962,7 @@ local function cmd_org()
         local bar_len = pop.fte > 0 and math.floor((bu.headcount / pop.fte) * 30) or 0
         local bar = string.rep("#", bar_len) .. string.rep("-", 30 - bar_len)
         print(string.format("  [%s] %s %3d FTE (%s)", 
-            bu.code, bar, bu.headcount, common.pct(bu.headcount, pop.fte)))
+            bu.code, bar, bu.headcount, pct(bu.headcount, pop.fte)))
         print(string.format("        %s", bu.name))
     end
     print("")
@@ -901,50 +995,11 @@ local function cmd_qbr()
     print("")
     
     local dashboard = generate_dashboard(state)
-    print(dashboard)
-    print("")
-    
-    if CONFIG.api_key == "your-api-key-here" or CONFIG.api_key == "" then
-        print("+==============================================================+")
-        print("|  ERROR: AI strategy platform not configured.                 |")
-        print("|  Please set ANTHROPIC_API_KEY environment variable.          |")
-        print("+==============================================================+")
-        return
-    end
-    
     local system_prompt = build_system_prompt(state)
     local user_prompt = build_user_prompt(state, dashboard)
-    local response = call_llm(system_prompt, user_prompt)
-    
-    if response then
-        print("")
-        print("==============================================================")
-        print("                      QBR PROCEEDINGS")
-        print("==============================================================")
-        print("")
-        print(response)
-        print("")
-        
-        local session = {
-            date = state.date,
-            company = state.fortress.name_english .. " Inc.",
-            ceo = state.ceo.name,
-            headcount = state.population.total_headcount,
-            enps = state.population.enps,
-            dashboard = dashboard,
-            proceedings = response,
-            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-        }
-        
-        local session_file = string.format("%s/qbr_%s_%s.json",
-            CONFIG.output_dir, state.date.fiscal_year, state.date.quarter)
-        local f = io.open(session_file, "w")
-        f:write(json.encode(session))
-        f:close()
-        print("[QBR materials archived: " .. session_file .. "]")
-    else
-        print("[Corp] The QBR could not be completed. Please escalate to IT.")
-    end
+
+    -- Print the prompt for manual copy/paste to LLM
+    print_llm_prompt(system_prompt, user_prompt)
 end
 
 -- ============================================================

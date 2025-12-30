@@ -363,7 +363,7 @@ local function select_faction_spokespersons(factions)
     return spokespersons
 end
 
-local function get_resources()
+local function get_resources(population)
     local food_count = 0
     local drink_count = 0
     local food_types = {
@@ -437,23 +437,36 @@ local function get_resources()
             end
         end
     end
-    
-    local function status_for_count(count)
-        if count > 200 then return "abundant"
-        elseif count > 100 then return "adequate"
-        elseif count > 50 then return "low"
-        else return "critical" end
+
+    -- Calculate days of supply based on population
+    -- Dwarves eat ~2 times per season (84 days), drink ~5 times per season
+    local function status_for_supply(count, consumption_per_season)
+        local pop = population or 1
+        if pop == 0 then pop = 1 end
+
+        -- Calculate days of supply: (count / pop) / (consumption_per_season / 84)
+        local days_of_supply = (count * 84) / (pop * consumption_per_season)
+
+        if days_of_supply > 168 then return "abundant", days_of_supply      -- > 2 seasons
+        elseif days_of_supply > 84 then return "adequate", days_of_supply   -- > 1 season
+        elseif days_of_supply > 42 then return "low", days_of_supply        -- > 0.5 season
+        else return "critical", days_of_supply end                           -- <= 0.5 season
     end
+
+    local food_status, food_days = status_for_supply(food_count, 2)
+    local drink_status, drink_days = status_for_supply(drink_count, 5)
 
     return {
         food = {
             count = food_count,
-            status = status_for_count(food_count),
+            status = food_status,
+            days_of_supply = math.floor(food_days),
             types = food_types
         },
         drink = {
             count = drink_count,
-            status = status_for_count(drink_count),
+            status = drink_status,
+            days_of_supply = math.floor(drink_days),
             types = drink_types
         },
         wealth = {
@@ -834,7 +847,7 @@ local function collect_state()
         fortress = get_fortress_info(),
         population = pop,
         spokespersons = spokespersons,
-        resources = get_resources(),
+        resources = get_resources(pop.total),
         trade_goods = get_trade_goods(),
         military = get_military(),
         buildings = get_buildings_summary(),
@@ -974,8 +987,8 @@ local function generate_briefing(state)
     
     -- Resources with diversity breakdown
     table.insert(lines, "## Common Resources")
-    table.insert(lines, string.format("**Food:** %s %s (%d units total)",
-        status_indicator(res.food.status), res.food.status, res.food.count))
+    table.insert(lines, string.format("**Food:** %s %s (%d units, ~%d days supply)",
+        status_indicator(res.food.status), res.food.status, res.food.count, res.food.days_of_supply))
 
     -- Food diversity breakdown
     local food_breakdown = {}
@@ -988,8 +1001,8 @@ local function generate_briefing(state)
         table.insert(lines, "  - " .. table.concat(food_breakdown, ", "))
     end
 
-    table.insert(lines, string.format("**Drink:** %s %s (%d units total)",
-        status_indicator(res.drink.status), res.drink.status, res.drink.count))
+    table.insert(lines, string.format("**Drink:** %s %s (%d units, ~%d days supply)",
+        status_indicator(res.drink.status), res.drink.status, res.drink.count, res.drink.days_of_supply))
 
     -- Drink diversity breakdown
     local drink_breakdown = {}

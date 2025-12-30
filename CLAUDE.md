@@ -23,8 +23,8 @@ For manual installation (Steam flatpak):
 # DFHack directories for this system:
 DF_BASE="$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Dwarf Fortress"
 
-# Copy all scripts to scripts directory (including common library)
-cp dwarven-common.lua dwarven-coop.lua dwarven-reich.lua dwarven-corp.lua "$DF_BASE/hack/scripts/"
+# Copy all scripts to scripts directory
+cp dwarven-coop.lua dwarven-reich.lua dwarven-corp.lua "$DF_BASE/hack/scripts/"
 ```
 
 Then run from the DFHack console within Dwarf Fortress:
@@ -50,7 +50,7 @@ dwarven-corp status
 
 ### Development Workflow
 
-There is no build process. Edit Lua files directly and reload in DFHack. Session logs are saved to `/tmp/dwarven-{coop,reich,corp}/` as JSON files.
+There is no build process. Edit Lua files directly and reload in DFHack.
 
 ### Testing Installation
 
@@ -92,31 +92,19 @@ All located in the Dwarf Fortress installation directory.
 
 ## Architecture
 
-### Shared Library
-
-**`dwarven-common.lua`** - Common library installed to `hack/scripts/` containing:
-
-- **Utility Functions**: `safe_get()`, `plural()`, `pct()`, `status_indicator()`
-- **DFHack API Helpers**: `translate_name()`, `is_military()` (with compatibility for old/new APIs)
-- **State Extraction**: `get_fortress_info()`, `get_resources()`, `get_military()`, `get_recent_events()`, `get_buildings_summary()`
-- **LLM Integration**: `call_llm()` with HTTP requests via luasocket
-
-All three governance scripts load this library: `local common = dfhack.script_environment('dwarven-common')`
-
-Note: Using `dfhack.script_environment()` instead of `require()` ensures the library is reloaded on each script execution without caching, making development easier.
-
 ### Shared Script Pattern
 
 All three scripts follow the same architectural pattern:
 
-1. **Configuration** (`CONFIG` table) - API key, model, output directory
-2. **Common Library Import** - `dfhack.script_environment('dwarven-common')` for shared utilities
-3. **Governance Structure** - Faction/council/C-suite definitions with profession mappings (governance-specific)
-4. **State Collection** - Extract game data via DFHack API and common library
-5. **Report Generation** - Create markdown briefings from game state
-6. **LLM Interaction** - Call common.call_llm() wrapper
-7. **Command Handlers** - Functions like `cmd_assembly()`, `cmd_decree()`, `cmd_qbr()`
-8. **Entry Point** - Argument parsing with `argparse.processArgsGetopt()`
+1. **Utility Functions** - `safe_get()`, `plural()`, `pct()`, `status_indicator()` for error handling and formatting
+2. **DFHack API Helpers** - `translate_name()`, `is_military()`, `get_fortress_info()`, `get_buildings_summary()` with compatibility for old/new DFHack APIs
+3. **Configuration** (`CONFIG` table) - API key, model, output directory
+4. **Governance Structure** - Faction/council/C-suite definitions with profession mappings (governance-specific)
+5. **State Collection** - Extract game data via DFHack API
+6. **Report Generation** - Create markdown briefings from game state
+7. **Prompt Generation** - Build system and user prompts, then print combined prompt for manual copy/paste to LLM
+8. **Command Handlers** - Functions like `cmd_assembly()`, `cmd_decree()`, `cmd_qbr()`
+9. **Entry Point** - Argument parsing with `argparse.processArgsGetopt()`
 
 ### State Collection Pipeline
 
@@ -158,25 +146,19 @@ All use the same profession categorization logic but different narrative framing
 
 ### LLM Integration
 
-The `call_llm()` function in each script:
+The `print_llm_prompt()` function in each script:
 
-1. Builds JSON request with system and user prompts
-2. Writes request to `{output_dir}/request.json`
-3. Uses DFHack's `plugins.luasocket` to make TCP connection to Anthropic API
-4. Manually constructs HTTP POST request over TCP (port 443)
-5. Reads and parses HTTP response, extracts JSON body
-6. Saves response to `{output_dir}/response.json`
-7. Extracts text from `response.content[1].text`
+1. Combines system and user prompts into a single text block
+2. Prints the combined prompt to stdout
+3. User can then copy/paste this prompt into any LLM interface (Claude.ai, API playground, etc.)
 
-**Important DFHack Limitations:**
-- `io.popen()` is NOT available (returns nil)
-- `os.execute()` is NOT available/blocked in DFHack scripts
-- Must use `require('plugins.luasocket')` for network requests
-- DFHack's luasocket only supports raw TCP, not HTTP libraries
-- HTTP requests must be manually constructed as raw TCP data
-- HTTPS works on port 443 but SSL/TLS is handled transparently
-
-This is intentionally blocking since the game is paused during quarterly meetings.
+**Workflow:**
+1. Run command (e.g., `dwarven-coop assembly`)
+2. Script gathers fortress state and generates briefing
+3. Script builds system and user prompts
+4. Script prints combined prompt to console
+5. User copies prompt and pastes it into their preferred LLM interface
+6. LLM generates OKRs based on current fortress state
 
 ### Prompt Architecture
 
@@ -197,19 +179,9 @@ All DFHack memory access uses `safe_get()` with pcall to handle nil values grace
 
 Each dwarf is assigned to exactly one faction/unit/council based on their profession. The `get_faction_for_profession()` / `get_business_unit()` functions iterate through profession lists to find matches. Unmapped professions default to the "Services" group.
 
-### Session Persistence
-
-Each meeting/assembly generates a JSON file named by game date:
-- `assembly_{year}_{season}.json` (coop)
-- `decree_{year}_{season}.json` (reich)
-- `qbr_FY{year}_Q{quarter}.json` (corp)
-
-Files include full state, prompts, and LLM response for debugging and replay.
-
 ### Dependencies
 
 Required Lua modules (provided by DFHack):
-- `json` - Encode/decode for API calls and session storage
 - `argparse` - Command-line argument parsing
 - `utils` - General DFHack utilities
 
