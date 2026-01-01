@@ -605,28 +605,224 @@ local function get_trade_goods()
     return trade_goods
 end
 
-local function get_military()
-    local squads = {}
-    local plotinfo_id = df.global.plotinfo.group_id
-    
-    for _, squad in ipairs(df.global.world.squads.all) do
-        if squad.entity_id == plotinfo_id then
-            local member_count = 0
-            for _, pos in ipairs(squad.positions) do
-                if pos.occupant ~= -1 then
-                    member_count = member_count + 1
+local function get_skill_level(unit, skill_id)
+    if not unit.status.current_soul or not skill_id then
+        return 0, "Dabbling"
+    end
+
+    local skill_levels = {
+        [0] = "Dabbling", [1] = "Novice", [2] = "Adequate", [3] = "Competent",
+        [4] = "Skilled", [5] = "Proficient", [6] = "Talented", [7] = "Adept",
+        [8] = "Expert", [9] = "Professional", [10] = "Accomplished", [11] = "Great",
+        [12] = "Master", [13] = "High Master", [14] = "Grand Master", [15] = "Legendary"
+    }
+
+    for _, skill in ipairs(unit.status.current_soul.skills) do
+        if skill.id == skill_id then
+            -- Rating is the skill level directly (0=Dabbling, 1=Novice, 2=Adequate, etc.)
+            local level = math.min(15, skill.rating)
+            return level, skill_levels[level] or "Unknown"
+        end
+    end
+
+    return 0, "Dabbling"
+end
+
+local function get_unit_equipment(unit)
+    local equipment = {
+        weapon = "none",
+        armor = {},
+        shield = "none"
+    }
+
+    if not unit.inventory then
+        return equipment
+    end
+
+    for _, inv_item in ipairs(unit.inventory) do
+        local item = inv_item.item
+        if item then
+            local mode = inv_item.mode
+
+            -- Check weapons in wielded (mode 1) or uniform (mode 10) slots
+            if mode == 1 or mode == 10 then
+                if df.item_weaponst:is_instance(item) then
+                    local mat = dfhack.matinfo.decode(item)
+                    local mat_name = mat and mat:toString() or "unknown"
+                    local weapon_type = item.subtype and item.subtype.name or "weapon"
+                    equipment.weapon = mat_name .. " " .. weapon_type
                 end
             end
-            if member_count > 0 then
+
+            -- Check armor and shields in worn (mode 2) or uniform (mode 10) slots
+            if mode == 2 or mode == 10 then
+                if df.item_armorst:is_instance(item) then
+                    local mat = dfhack.matinfo.decode(item)
+                    local mat_name = mat and mat:toString() or "unknown"
+                    local armor_type = item.subtype and item.subtype.name or "armor"
+                    table.insert(equipment.armor, mat_name .. " " .. armor_type)
+                elseif df.item_shieldst:is_instance(item) then
+                    local mat = dfhack.matinfo.decode(item)
+                    local mat_name = mat and mat:toString() or "unknown"
+                    equipment.shield = mat_name .. " shield"
+                end
+            end
+        end
+    end
+
+    return equipment
+end
+
+local function get_military()
+    local squads = {}
+
+    -- Get our fortress's entity
+    local fort_ent = df.historical_entity.find(df.global.plotinfo.group_id)
+
+    for _, squad in ipairs(df.global.world.squads.all) do
+        -- Check if this squad belongs to our fortress by checking if it's in our entity's squads list
+        local is_ours = false
+        if fort_ent and fort_ent.squads then
+            for _, our_squad_id in ipairs(fort_ent.squads) do
+                if our_squad_id == squad.id then
+                    is_ours = true
+                    break
+                end
+            end
+        end
+
+        if is_ours then
+            local members = {}
+
+            for _, pos in ipairs(squad.positions) do
+                if pos.occupant ~= -1 then
+                    -- Find unit - pos.occupant is a historical figure ID, not a unit ID
+                    local unit = nil
+                    local hist_fig = df.historical_figure.find(pos.occupant)
+                    if hist_fig and hist_fig.unit_id and hist_fig.unit_id ~= -1 then
+                        -- Find the unit by its ID
+                        for _, u in ipairs(df.global.world.units.active) do
+                            if u.id == hist_fig.unit_id then
+                                unit = u
+                                break
+                            end
+                        end
+                    end
+
+                    if unit then
+                        local name = translate_name(unit.name, false)
+                        local equipment = get_unit_equipment(unit)
+
+                        -- Get combat skills: MELEE_COMBAT (ID 97) and DODGING
+                        local fighter_level, fighter_desc = get_skill_level(unit, 97)
+                        local dodger_level, dodger_desc = get_skill_level(unit, df.job_skill.DODGING)
+
+                        -- Get weapon skill based on equipped weapon
+                        local weapon_skill_desc = "none"
+                        if equipment.weapon ~= "none" then
+                            -- Try to get weapon-specific skill
+                            -- This is simplified - in reality would check weapon type
+                            local axe_level, axe_desc = get_skill_level(unit, df.job_skill.AXE)
+                            local sword_level, sword_desc = get_skill_level(unit, df.job_skill.SWORD)
+                            local hammer_level, hammer_desc = get_skill_level(unit, df.job_skill.HAMMER)
+                            local spear_level, spear_desc = get_skill_level(unit, df.job_skill.SPEAR)
+                            local mace_level, mace_desc = get_skill_level(unit, df.job_skill.MACE)
+                            local crossbow_level, crossbow_desc = get_skill_level(unit, df.job_skill.CROSSBOW)
+
+                            -- Use highest weapon skill
+                            local max_level = math.max(axe_level, sword_level, hammer_level, spear_level, mace_level, crossbow_level)
+                            if max_level == axe_level and axe_level > 0 then weapon_skill_desc = "Axe: " .. axe_desc
+                            elseif max_level == sword_level and sword_level > 0 then weapon_skill_desc = "Sword: " .. sword_desc
+                            elseif max_level == hammer_level and hammer_level > 0 then weapon_skill_desc = "Hammer: " .. hammer_desc
+                            elseif max_level == spear_level and spear_level > 0 then weapon_skill_desc = "Spear: " .. spear_desc
+                            elseif max_level == mace_level and mace_level > 0 then weapon_skill_desc = "Mace: " .. mace_desc
+                            elseif max_level == crossbow_level and crossbow_level > 0 then weapon_skill_desc = "Crossbow: " .. crossbow_desc
+                            end
+                        end
+
+                        table.insert(members, {
+                            name = name,
+                            equipment = equipment,
+                            skills = {
+                                fighter = fighter_desc,
+                                dodger = dodger_desc,
+                                weapon = weapon_skill_desc
+                            }
+                        })
+                    end
+                end
+            end
+
+            if #members > 0 then
                 table.insert(squads, {
                     name = translate_name(squad.name, false),
-                    members = member_count
+                    members = members
                 })
             end
         end
     end
-    
+
     return { squad_count = #squads, squads = squads }
+end
+
+local function get_defensive_structures()
+    local defenses = {
+        fortifications = 0,
+        walls = 0,
+        traps = 0,
+        bridges = 0,
+        spike_traps = 0,
+        weapon_traps = 0,
+        cage_traps = 0,
+        stone_traps = 0
+    }
+
+    for _, bld in ipairs(df.global.world.buildings.all) do
+        local btype = bld:getType()
+
+        -- Fortifications
+        if btype == df.building_type.Fortification then
+            defenses.fortifications = defenses.fortifications + 1
+
+        -- Walls (constructed walls, not natural)
+        elseif btype == df.building_type.Construction then
+            local subtype = bld:getSubtype()
+            if subtype == df.construction_type.Wall then
+                defenses.walls = defenses.walls + 1
+            elseif subtype == df.construction_type.Fortification then
+                defenses.fortifications = defenses.fortifications + 1
+            end
+
+        -- Bridges (drawbridges for defense)
+        elseif btype == df.building_type.Bridge then
+            defenses.bridges = defenses.bridges + 1
+
+        -- Traps
+        elseif btype == df.building_type.Trap then
+            defenses.traps = defenses.traps + 1
+
+            -- Get trap subtype for more detail
+            local trap_type = safe_get(function() return bld:getSubtype() end, -1)
+            if trap_type == df.trap_type.StoneFallTrap then
+                defenses.stone_traps = defenses.stone_traps + 1
+            elseif trap_type == df.trap_type.WeaponTrap then
+                defenses.weapon_traps = defenses.weapon_traps + 1
+            elseif trap_type == df.trap_type.Lever then
+                -- Skip levers, not really defensive
+                defenses.traps = defenses.traps - 1
+            elseif trap_type == df.trap_type.PressurePlate then
+                -- Skip pressure plates themselves
+                defenses.traps = defenses.traps - 1
+            elseif trap_type == df.trap_type.CageTrap then
+                defenses.cage_traps = defenses.cage_traps + 1
+            elseif trap_type == df.trap_type.TrackStop then
+                -- Skip track stops
+                defenses.traps = defenses.traps - 1
+            end
+        end
+    end
+
+    return defenses
 end
 
 local function get_recent_events()
@@ -855,6 +1051,7 @@ local function collect_state()
         resources = get_resources(pop.total),
         trade_goods = get_trade_goods(),
         military = get_military(),
+        defenses = get_defensive_structures(),
         buildings = get_buildings_summary(),
         zones = get_zones(),
         events = get_recent_events(),
@@ -1065,9 +1262,83 @@ local function generate_briefing(state)
     end
     table.insert(lines, string.format("**Militia:** %s (%d members, %s of cooperative)",
         strength, pop.military, pct(pop.military, pop.total)))
-    for _, squad in ipairs(mil.squads) do
-        table.insert(lines, string.format("  - %s: %d members", squad.name, squad.members))
+
+    -- Detailed squad information with equipment and skills
+    if mil.squads and #mil.squads > 0 then
+        for _, squad in ipairs(mil.squads) do
+            table.insert(lines, string.format("  - **%s**: %d members", squad.name, #squad.members))
+
+            for _, member in ipairs(squad.members) do
+                table.insert(lines, string.format("    - %s", member.name))
+
+                -- Equipment
+                local equipment_parts = {}
+                if member.equipment.weapon ~= "none" then
+                    table.insert(equipment_parts, "Weapon: " .. member.equipment.weapon)
+                end
+                if member.equipment.shield ~= "none" then
+                    table.insert(equipment_parts, "Shield: " .. member.equipment.shield)
+                end
+                if #member.equipment.armor > 0 then
+                    table.insert(equipment_parts, "Armor: " .. #member.equipment.armor .. " pieces")
+                end
+
+                if #equipment_parts > 0 then
+                    table.insert(lines, "      Equipment: " .. table.concat(equipment_parts, ", "))
+                else
+                    table.insert(lines, "      Equipment: none")
+                end
+
+                -- Skills
+                local skill_parts = {}
+                if member.skills.weapon ~= "none" then
+                    table.insert(skill_parts, member.skills.weapon)
+                end
+                table.insert(skill_parts, "Fighting: " .. member.skills.fighter)
+                table.insert(skill_parts, "Dodging: " .. member.skills.dodger)
+
+                table.insert(lines, "      Skills: " .. table.concat(skill_parts, ", "))
+            end
+        end
+    elseif pop.military > 0 then
+        table.insert(lines, "  - (No squad details available)")
     end
+
+    table.insert(lines, "")
+
+    -- Defensive structures
+    local def = state.defenses
+    table.insert(lines, "**Defensive Structures:**")
+
+    local def_items = {}
+    if def.fortifications > 0 then
+        table.insert(def_items, string.format("Fortifications: %d", def.fortifications))
+    end
+    if def.walls > 0 then
+        table.insert(def_items, string.format("Walls: %d", def.walls))
+    end
+    if def.traps > 0 then
+        local trap_details = {}
+        if def.cage_traps > 0 then table.insert(trap_details, def.cage_traps .. " cage") end
+        if def.weapon_traps > 0 then table.insert(trap_details, def.weapon_traps .. " weapon") end
+        if def.stone_traps > 0 then table.insert(trap_details, def.stone_traps .. " stone-fall") end
+
+        if #trap_details > 0 then
+            table.insert(def_items, string.format("Traps: %d (%s)", def.traps, table.concat(trap_details, ", ")))
+        else
+            table.insert(def_items, string.format("Traps: %d", def.traps))
+        end
+    end
+    if def.bridges > 0 then
+        table.insert(def_items, string.format("Bridges: %d", def.bridges))
+    end
+
+    if #def_items > 0 then
+        table.insert(lines, "  - " .. table.concat(def_items, ", "))
+    else
+        table.insert(lines, "  - none")
+    end
+
     table.insert(lines, "")
     
     -- Infrastructure
