@@ -247,8 +247,13 @@ local function analyze_population()
     }
     
     local stress_categories = {
-        [0] = "joyous", [1] = "happy", [2] = "content", [3] = "fine",
-        [4] = "unhappy", [5] = "stressed", [6] = "miserable"
+        [0] = "miserable",  -- Negative (lowest)
+        [1] = "stressed",   -- Negative
+        [2] = "unhappy",    -- Neutral (lower)
+        [3] = "fine",       -- Neutral (middle)
+        [4] = "content",    -- Neutral (upper)
+        [5] = "happy",      -- Positive
+        [6] = "joyous"      -- Positive (highest)
     }
     
     for _, unit in ipairs(df.global.world.units.active) do
@@ -476,8 +481,9 @@ local function generate_report(state)
     local sf = state.stonefather
     
     local threats = identify_threats(state)
-    local positive = pop.stress.joyous + pop.stress.happy + pop.stress.content
-    local negative = pop.stress.unhappy + pop.stress.stressed + pop.stress.miserable
+    local positive = pop.stress.joyous + pop.stress.happy
+    local neutral = pop.stress.unhappy + pop.stress.fine + pop.stress.content
+    local negative = pop.stress.stressed + pop.stress.miserable
     
     local lines = {
         "+==============================================================+",
@@ -507,12 +513,12 @@ local function generate_report(state)
         "-- Loyalty Index ---------------------------------------------",
         string.format("Status: [%s] %d%%", pop.loyalty, pop.loyalty_pct),
         string.format("  Fanatically loyal:   %d", pop.stress.joyous),
-        string.format("  Loyal:               %d", pop.stress.happy + pop.stress.content),
-        string.format("  Neutral:             %d", pop.stress.fine),
-        string.format("  Questionable:        %d %s", pop.stress.unhappy, 
-            pop.stress.unhappy > 0 and "< observation recommended" or ""),
-        string.format("  Potential dissident: %d %s", pop.stress.stressed + pop.stress.miserable,
-            (pop.stress.stressed + pop.stress.miserable) > 0 and "< ACTION REQUIRED" or ""),
+        string.format("  Loyal:               %d", pop.stress.happy),
+        string.format("  Neutral:             %d", neutral),
+        string.format("  Questionable:        %d %s", pop.stress.stressed,
+            pop.stress.stressed > 0 and "< observation recommended" or ""),
+        string.format("  Potential dissident: %d %s", pop.stress.miserable,
+            pop.stress.miserable > 0 and "< ACTION REQUIRED" or ""),
         ""
     }
     

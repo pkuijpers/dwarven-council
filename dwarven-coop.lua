@@ -261,22 +261,27 @@ local function analyze_population()
     end
     
     local stress_categories = {
-        [0] = "joyous", [1] = "happy", [2] = "content", [3] = "fine",
-        [4] = "unhappy", [5] = "stressed", [6] = "miserable"
+        [0] = "miserable",  -- Negative (lowest)
+        [1] = "stressed",   -- Negative
+        [2] = "unhappy",    -- Neutral (lower)
+        [3] = "fine",       -- Neutral (middle)
+        [4] = "content",    -- Neutral (upper)
+        [5] = "happy",      -- Positive
+        [6] = "joyous"      -- Positive (highest)
     }
-    
+
     for _, unit in ipairs(df.global.world.units.active) do
         if dfhack.units.isCitizen(unit) and dfhack.units.isAlive(unit) then
             summary.total = summary.total + 1
-            
+
             local is_child = dfhack.units.isChild(unit) or dfhack.units.isBaby(unit)
-            
+
             if is_child then
                 summary.children = summary.children + 1
             else
                 summary.adults = summary.adults + 1
                 summary.eligible_voters = summary.eligible_voters + 1
-                
+
                 -- Determine faction
                 local profession = df.profession[unit.profession] or "PEASANT"
                 local faction_id = get_faction_for_profession(profession)
@@ -287,15 +292,15 @@ local function analyze_population()
                     table.insert(summary.factions[faction_id].dwarves, unit)
                 end
             end
-            
+
             if is_military(unit) then
                 summary.military = summary.military + 1
             end
-            
+
             if unit.health and unit.health.flags.needs_healthcare then
                 summary.injured = summary.injured + 1
             end
-            
+
             local stress_cat = dfhack.units.getStressCategory(unit)
             local cat_name = stress_categories[stress_cat]
             if cat_name and summary.stress[cat_name] then
@@ -303,7 +308,7 @@ local function analyze_population()
             end
         end
     end
-    
+
     return summary
 end
 
@@ -915,8 +920,9 @@ local function generate_briefing(state)
     
     local happiness = calculate_happiness(pop.stress)
     local concerns = identify_concerns(state)
-    local positive = pop.stress.joyous + pop.stress.happy + pop.stress.content
-    local negative = pop.stress.unhappy + pop.stress.stressed + pop.stress.miserable
+    local positive = pop.stress.joyous + pop.stress.happy
+    local neutral = pop.stress.unhappy + pop.stress.fine + pop.stress.content
+    local negative = pop.stress.stressed + pop.stress.miserable
     
     local lines = {
         "# Dwarven Cooperative " .. fort.name_english,
@@ -980,7 +986,7 @@ local function generate_briefing(state)
         pop.adults - pop.military - pop.injured, pop.military, pop.injured))
     table.insert(lines, string.format("**Morale:** %d%% satisfaction", happiness))
     table.insert(lines, string.format("  - Positive mood: %d members (%s)", positive, pct(positive, pop.total)))
-    table.insert(lines, string.format("  - Neutral: %d members (%s)", pop.stress.fine, pct(pop.stress.fine, pop.total)))
+    table.insert(lines, string.format("  - Neutral: %d members (%s)", neutral, pct(neutral, pop.total)))
     local neg_warn = negative > (pop.total / 5) and " !" or ""
     table.insert(lines, string.format("  - Negative mood: %d members (%s)%s", negative, pct(negative, pop.total), neg_warn))
     table.insert(lines, "")
