@@ -10,19 +10,15 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { DFHackClient } from './dfhack-client.js';
 
-// Global DFHack client instance
-let dfhackClient: DFHackClient | null = null;
-
+// Create a fresh connection for each request to avoid stale connection issues
 async function getClient(): Promise<DFHackClient> {
-    if (!dfhackClient || !dfhackClient.isConnected()) {
-        dfhackClient = new DFHackClient({
-            host: process.env.DFHACK_HOST ?? 'localhost',
-            port: parseInt(process.env.DFHACK_PORT ?? '5000'),
-            timeout: parseInt(process.env.DFHACK_TIMEOUT ?? '30000')
-        });
-        await dfhackClient.connect();
-    }
-    return dfhackClient;
+    const client = new DFHackClient({
+        host: process.env.DFHACK_HOST ?? 'localhost',
+        port: parseInt(process.env.DFHACK_PORT ?? '5000'),
+        timeout: parseInt(process.env.DFHACK_TIMEOUT ?? '30000')
+    });
+    await client.connect();
+    return client;
 }
 
 function textResult(text: string): CallToolResult {
@@ -151,8 +147,9 @@ const tools = [
 
 // Tool handlers
 async function handleTool(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+    let client: DFHackClient | null = null;
     try {
-        const client = await getClient();
+        client = await getClient();
 
         switch (name) {
             case 'dfhack_status': {
@@ -251,6 +248,11 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return errorResult(`Failed to execute tool: ${message}`);
+    } finally {
+        // Always disconnect to avoid stale connections
+        if (client) {
+            await client.disconnect().catch(() => {});
+        }
     }
 }
 
@@ -284,10 +286,7 @@ async function main() {
     await server.connect(transport);
 
     // Handle cleanup on exit
-    process.on('SIGINT', async () => {
-        if (dfhackClient) {
-            await dfhackClient.disconnect();
-        }
+    process.on('SIGINT', () => {
         process.exit(0);
     });
 }

@@ -142,10 +142,12 @@ export class DFHackClient {
     }
 
     async connect(): Promise<void> {
-        if (this.connected) return;
+        // Always create a fresh connection
+        await this.forceDisconnect();
 
         return new Promise((resolve, reject) => {
             const timeoutId = setTimeout(() => {
+                this.forceDisconnect();
                 reject(new Error(`Connection timeout after ${this.timeout}ms`));
             }, this.timeout);
 
@@ -156,20 +158,33 @@ export class DFHackClient {
                     this.connected = true;
                     resolve();
                 } catch (err) {
+                    this.forceDisconnect();
                     reject(err);
                 }
             });
 
             this.socket.on('error', (err) => {
                 clearTimeout(timeoutId);
-                this.connected = false;
+                this.forceDisconnect();
                 reject(err);
             });
 
             this.socket.on('close', () => {
                 this.connected = false;
+                this.socket = null;
             });
         });
+    }
+
+    private forceDisconnect(): Promise<void> {
+        this.connected = false;
+        this.responseBuffer = Buffer.alloc(0);
+        if (this.socket) {
+            this.socket.removeAllListeners();
+            this.socket.destroy();
+            this.socket = null;
+        }
+        return Promise.resolve();
     }
 
     private async handshake(): Promise<void> {
