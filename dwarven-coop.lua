@@ -382,6 +382,10 @@ local function get_resources(population)
     }
     local drink_types = {}
 
+    -- Calculate wealth by summing item values (df.global.plotinfo.wealth.total is often 0)
+    local total_wealth = 0
+    local created_wealth = 0
+
     for _, item in ipairs(df.global.world.items.all) do
         -- Filter out items that aren't ours or aren't available
         if not item.flags.trader and
@@ -389,6 +393,17 @@ local function get_resources(population)
            not item.flags.removed and
            not item.flags.forbid and
            not item.flags.dump then
+
+            -- Calculate item value for wealth tracking
+            local item_value = safe_get(function() return dfhack.items.getValue(item) end, 0)
+            if item_value > 0 then
+                total_wealth = total_wealth + item_value
+                -- Check if fortress-made (has a maker)
+                local maker_race = safe_get(function() return item.maker_race end, -1)
+                if maker_race ~= -1 then
+                    created_wealth = created_wealth + item_value
+                end
+            end
 
             if df.item_foodst:is_instance(item) then
                 -- Prepared meals can be stacked
@@ -475,9 +490,9 @@ local function get_resources(population)
             types = drink_types
         },
         wealth = {
-            total = safe_get(function() return df.global.plotinfo.wealth.total end, 0),
-            created = safe_get(function() return df.global.plotinfo.wealth.created end, 0),
-            imported = safe_get(function() return df.global.plotinfo.wealth.imported end, 0)
+            total = total_wealth,
+            created = created_wealth,
+            imported = total_wealth - created_wealth
         }
     }
 end

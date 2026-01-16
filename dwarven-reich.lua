@@ -309,9 +309,24 @@ local function get_resources()
     local food_count = 0
     local drink_count = 0
 
+    -- Calculate wealth by summing item values (df.global.plotinfo.wealth.total is often 0)
+    local total_wealth = 0
+    local created_wealth = 0
+
     for _, item in ipairs(df.global.world.items.all) do
         -- Only exclude items that truly don't belong to the fortress
         if not item.flags.trader and not item.flags.hostile and not item.flags.removed then
+            -- Calculate item value for wealth tracking
+            local item_value = safe_get(function() return dfhack.items.getValue(item) end, 0)
+            if item_value > 0 then
+                total_wealth = total_wealth + item_value
+                -- Check if fortress-made (has a maker)
+                local maker_race = safe_get(function() return item.maker_race end, -1)
+                if maker_race ~= -1 then
+                    created_wealth = created_wealth + item_value
+                end
+            end
+
             -- Check for all edible item types
             if df.item_foodst:is_instance(item) or
                df.item_plantst:is_instance(item) or
@@ -334,21 +349,21 @@ local function get_resources()
             end
         end
     end
-    
+
     local function status_for_count(count)
         if count > 200 then return "abundant"
         elseif count > 100 then return "adequate"
         elseif count > 50 then return "low"
         else return "critical" end
     end
-    
+
     return {
         food = { count = food_count, status = status_for_count(food_count) },
         drink = { count = drink_count, status = status_for_count(drink_count) },
         wealth = {
-            total = safe_get(function() return df.global.plotinfo.wealth.total end, 0),
-            created = safe_get(function() return df.global.plotinfo.wealth.created end, 0),
-            imported = safe_get(function() return df.global.plotinfo.wealth.imported end, 0)
+            total = total_wealth,
+            created = created_wealth,
+            imported = total_wealth - created_wealth
         }
     }
 end
