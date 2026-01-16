@@ -337,6 +337,109 @@ Contents include:
 
 ---
 
+## Development with MCP Server
+
+For developers working on these scripts, an MCP (Model Context Protocol) server is included that allows AI assistants like Claude Code to directly interact with DFHack. This enables real-time testing and debugging without manual copy-pasting.
+
+### Architecture
+
+```
+┌─────────────┐      stdio       ┌─────────────┐      TCP:5000      ┌─────────────┐
+│ Claude Code │ ◄──────────────► │ MCP Server  │ ◄────────────────► │   DFHack    │
+│             │                  │ (TypeScript)│    Protobuf RPC    │ (in DF)     │
+└─────────────┘                  └─────────────┘                    └─────────────┘
+```
+
+### Setup
+
+1. **Build the MCP server:**
+   ```bash
+   cd mcp-server
+   npm install
+   npm run build
+   ```
+
+2. **Configure Claude Code** — the `.mcp.json` file in the project root auto-configures the server:
+   ```json
+   {
+     "mcpServers": {
+       "dfhack": {
+         "command": "node",
+         "args": ["mcp-server/dist/index.js"]
+       }
+     }
+   }
+   ```
+
+3. **Start Dwarf Fortress** with DFHack and load a fortress
+
+4. **Restart Claude Code** to load the MCP server
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `dfhack_status` | Check DFHack connection and game mode |
+| `dfhack_command` | Run any DFHack command |
+| `coop_status` | Quick one-line cooperative status |
+| `coop_members` | Faction breakdown with vote counts |
+| `coop_briefing` | Full markdown briefing |
+| `coop_assembly` | Generate the LLM prompt for OKR generation |
+| `prospect` | Show available ores, gems, mineral veins |
+| `lua_eval` | Evaluate Lua expressions in DFHack |
+| `dfhack_help` | Get help for DFHack commands |
+
+### Example Usage in Claude Code
+
+Once configured, Claude Code can directly query fortress state:
+
+```
+User: What's the current food situation?
+
+Claude: [calls mcp__dfhack__coop_briefing]
+        Based on the briefing, you have 339 food units (~647 days supply)
+        but only 105 drink units (~80 days). You should prioritize brewing.
+```
+
+### DFHack Remote Protocol
+
+The MCP server communicates with DFHack via its built-in RPC interface:
+
+- **Port:** 5000 (configurable via `DFHACK_PORT` env var)
+- **Protocol:** Binary with Protobuf-encoded messages
+- **Handshake:** `"DFHack?\n"` + version → `"DFHack!\n"` + version
+- **Main method:** `RunCommand` (ID 1) executes any DFHack command
+
+### Extending the MCP Server
+
+To add new tools, edit `mcp-server/src/index.ts`:
+
+```typescript
+// Add to tools array
+{
+    name: 'my_new_tool',
+    description: 'Description for Claude',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            param: { type: 'string', description: 'Parameter description' }
+        },
+        required: ['param']
+    }
+}
+
+// Add handler in handleTool()
+case 'my_new_tool': {
+    const param = args.param as string;
+    const result = await client.runCommand('some-dfhack-command', [param]);
+    return textResult(result.output);
+}
+```
+
+Rebuild with `npm run build` and restart Claude Code.
+
+---
+
 ## Future Ideas
 
 - [ ] Auto-trigger on season change via DFHack events

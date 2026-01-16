@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "dfhack": {
+      "command": "node",
+      "args": ["/home/pieter/projects/dwarvencouncil/mcp-server/dist/index.js"],
+      "env": {
+        "DFHACK_HOST": "localhost",
+        "DFHACK_PORT": "5000",
+        "DFHACK_TIMEOUT": "30000"
+      }
+    }
+  }
+}

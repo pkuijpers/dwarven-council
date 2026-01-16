@@ -52,6 +52,49 @@ dwarven-corp status
 
 There is no build process. Edit Lua files directly and reload in DFHack.
 
+### MCP Server for Live Testing
+
+An MCP server is available that connects directly to DFHack's remote interface. This allows you to test scripts and query game state without manual copy-pasting.
+
+**Available MCP Tools:**
+
+| Tool | Usage |
+|------|-------|
+| `mcp__dfhack__dfhack_status` | Verify DFHack connection is active |
+| `mcp__dfhack__dfhack_command` | Run any DFHack command (e.g., `ls`, `help`) |
+| `mcp__dfhack__coop_status` | Quick fortress status one-liner |
+| `mcp__dfhack__coop_members` | Faction breakdown with vote counts |
+| `mcp__dfhack__coop_briefing` | Full markdown briefing (most useful for debugging) |
+| `mcp__dfhack__coop_assembly` | Generate complete LLM prompt |
+| `mcp__dfhack__prospect` | Show ores, gems, mineral veins |
+| `mcp__dfhack__lua_eval` | Evaluate Lua code directly in DFHack |
+| `mcp__dfhack__dfhack_help` | Get help for any DFHack command |
+
+**Typical Development Workflow:**
+
+1. Edit the Lua script in this repo
+2. Run `./install.sh` to copy to DFHack
+3. Use `mcp__dfhack__coop_briefing` to test output
+4. Check for errors with `mcp__dfhack__dfhack_command` running `dwarven-coop status`
+5. Use `mcp__dfhack__lua_eval` to test individual Lua expressions
+
+**Example: Testing a Lua expression**
+```
+mcp__dfhack__lua_eval with code: "#df.global.world.units.active"
+→ Returns the number of active units
+```
+
+**Example: Running arbitrary DFHack commands**
+```
+mcp__dfhack__dfhack_command with command: "help" args: ["dwarven-coop"]
+→ Shows help text for the dwarven-coop script
+```
+
+**Prerequisites:**
+- Dwarf Fortress must be running with a fortress loaded
+- DFHack remote server runs automatically on port 5000
+- MCP server must be built: `cd mcp-server && npm install && npm run build`
+
 ### Testing Installation
 
 Run the test script to verify installation:
