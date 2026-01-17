@@ -41,6 +41,29 @@ local function status_indicator(status)
     return indicators[status] or "?"
 end
 
+-- Check if an item is physically at the fortress (not offsite/world history)
+-- Items can be onsite if:
+-- 1. They have a valid position (pos.x ~= -30000)
+-- 2. They are in a container that has a valid position
+-- 3. They are held by a fortress citizen
+local function is_item_onsite(item)
+    -- Direct position check
+    if item.pos.x ~= -30000 then
+        return true
+    end
+    -- Check if in a container that's onsite
+    local container = dfhack.items.getContainer(item)
+    if container and container.pos.x ~= -30000 then
+        return true
+    end
+    -- Check if held by a citizen
+    local holder = dfhack.items.getHolderUnit(item)
+    if holder and dfhack.units.isCitizen(holder) then
+        return true
+    end
+    return false
+end
+
 -- ============================================================
 -- DFHack API Compatibility Helpers
 -- ============================================================
@@ -315,7 +338,8 @@ local function get_resources()
 
     for _, item in ipairs(df.global.world.items.all) do
         -- Only exclude items that truly don't belong to the fortress
-        if not item.flags.trader and not item.flags.hostile and not item.flags.removed then
+        if not item.flags.trader and not item.flags.hostile and not item.flags.removed and
+           is_item_onsite(item) then
             -- Calculate item value for wealth tracking
             local item_value = safe_get(function() return dfhack.items.getValue(item) end, 0)
             if item_value > 0 then

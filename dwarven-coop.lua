@@ -42,6 +42,29 @@ local function status_indicator(status)
     return indicators[status] or "?"
 end
 
+-- Check if an item is physically at the fortress (not offsite/world history)
+-- Items can be onsite if:
+-- 1. They have a valid position (pos.x ~= -30000)
+-- 2. They are in a container that has a valid position
+-- 3. They are held by a fortress citizen
+local function is_item_onsite(item)
+    -- Direct position check
+    if item.pos.x ~= -30000 then
+        return true
+    end
+    -- Check if in a container that's onsite
+    local container = dfhack.items.getContainer(item)
+    if container and container.pos.x ~= -30000 then
+        return true
+    end
+    -- Check if held by a citizen
+    local holder = dfhack.items.getHolderUnit(item)
+    if holder and dfhack.units.isCitizen(holder) then
+        return true
+    end
+    return false
+end
+
 -- ============================================================
 -- DFHack API Compatibility Helpers
 -- ============================================================
@@ -392,7 +415,8 @@ local function get_resources(population)
            not item.flags.hostile and
            not item.flags.removed and
            not item.flags.forbid and
-           not item.flags.dump then
+           not item.flags.dump and
+           is_item_onsite(item) then
 
             -- Calculate item value for wealth tracking
             local item_value = safe_get(function() return dfhack.items.getValue(item) end, 0)
@@ -412,9 +436,10 @@ local function get_resources(population)
                 food_count = food_count + count
                 food_types.prepared_meals = food_types.prepared_meals + count
             elseif df.item_fishst:is_instance(item) or df.item_fish_rawst:is_instance(item) then
-                -- Fish are individual items, not stacked
-                food_count = food_count + 1
-                food_types.fish = food_types.fish + 1
+                local size = item.stack_size
+                local count = (size > 0) and size or 1
+                food_count = food_count + count
+                food_types.fish = food_types.fish + count
             elseif df.item_meatst:is_instance(item) then
                 local size = item.stack_size
                 local count = (size > 0) and size or 1
@@ -514,7 +539,8 @@ local function get_trade_goods()
            not item.flags.removed and
            not item.flags.forbid and
            not item.flags.dump and
-           not item.flags.in_building then
+           not item.flags.in_building and
+           is_item_onsite(item) then
 
             local quality = safe_get(function() return item.quality end, 0)
             local is_tradeable = false
@@ -910,7 +936,8 @@ local function get_mining_inventory()
     -- Scan existing items in fortress
     for _, item in ipairs(df.global.world.items.all) do
         if not item.flags.garbage_collect and not item.flags.removed and
-           not item.flags.trader and not item.flags.hostile then
+           not item.flags.trader and not item.flags.hostile and
+           is_item_onsite(item) then
 
             local matinfo = dfhack.matinfo.decode(item)
             if matinfo then
