@@ -899,8 +899,10 @@ local function get_zones()
         bedrooms = 0,
         dining_halls = 0,
         meeting_areas = 0,
-        hospitals = 0,
         barracks = 0,
+        offices = {},  -- List of {owner_name, positions}
+        pens = 0,
+        tombs = 0,
         other = 0
     }
 
@@ -913,10 +915,32 @@ local function get_zones()
                 zones.dining_halls = zones.dining_halls + 1
             elseif zone_type == df.civzone_type.MeetingHall then
                 zones.meeting_areas = zones.meeting_areas + 1
-            elseif zone_type == df.civzone_type.Hospital then
-                zones.hospitals = zones.hospitals + 1
             elseif zone_type == df.civzone_type.Barracks then
                 zones.barracks = zones.barracks + 1
+            elseif zone_type == df.civzone_type.Office then
+                local owner = safe_get(function() return dfhack.buildings.getOwner(bld) end, nil)
+                if owner then
+                    local positions = safe_get(function() return dfhack.units.getNoblePositions(owner) end, {})
+                    local position_names = {}
+                    if positions then
+                        for _, p in ipairs(positions) do
+                            local pos_name = safe_get(function() return p.position.name[0] end, nil)
+                            if pos_name then
+                                table.insert(position_names, pos_name)
+                            end
+                        end
+                    end
+                    table.insert(zones.offices, {
+                        owner_name = translate_name(owner.name, false),
+                        positions = position_names
+                    })
+                else
+                    table.insert(zones.offices, { owner_name = "unassigned", positions = {} })
+                end
+            elseif zone_type == df.civzone_type.Pen then
+                zones.pens = zones.pens + 1
+            elseif zone_type == df.civzone_type.Tomb then
+                zones.tombs = zones.tombs + 1
             else
                 zones.other = zones.other + 1
             end
@@ -924,6 +948,91 @@ local function get_zones()
     end
 
     return zones
+end
+
+local function get_locations()
+    local locations = {
+        hospitals = {},
+        taverns = {},
+        temples = {},
+        libraries = {},
+        guildhalls = {}
+    }
+
+    local site = safe_get(function() return df.global.world.world_data.active_site[0] end, nil)
+    if not site or not site.buildings then
+        return locations
+    end
+
+    for _, bld in ipairs(site.buildings) do
+        if df.abstract_building_hospitalst and df.abstract_building_hospitalst:is_instance(bld) then
+            local hospital = {
+                name = safe_get(function() return translate_name(bld.name, false) end, "Hospital"),
+                name_english = safe_get(function() return translate_name(bld.name, true) end, "Hospital"),
+                supplies = {}
+            }
+            -- Access hospital contents for supply tracking
+            if bld.contents then
+                hospital.supplies = {
+                    splints = {
+                        current = safe_get(function() return bld.contents.count_splints end, 0),
+                        desired = safe_get(function() return bld.contents.desired_splints end, 5)
+                    },
+                    crutches = {
+                        current = safe_get(function() return bld.contents.count_crutches end, 0),
+                        desired = safe_get(function() return bld.contents.desired_crutches end, 5)
+                    },
+                    thread = {
+                        current = safe_get(function() return bld.contents.count_thread end, 0),
+                        desired = safe_get(function() return bld.contents.desired_thread end, 75000)
+                    },
+                    cloth = {
+                        current = safe_get(function() return bld.contents.count_cloth end, 0),
+                        desired = safe_get(function() return bld.contents.desired_cloth end, 50000)
+                    },
+                    powder = {
+                        current = safe_get(function() return bld.contents.count_powder end, 0),
+                        desired = safe_get(function() return bld.contents.desired_powder end, 750)
+                    },
+                    buckets = {
+                        current = safe_get(function() return bld.contents.count_buckets end, 0),
+                        desired = safe_get(function() return bld.contents.desired_buckets end, 2)
+                    },
+                    soap = {
+                        current = safe_get(function() return bld.contents.count_soap end, 0),
+                        desired = safe_get(function() return bld.contents.desired_soap end, 750)
+                    }
+                }
+            end
+            table.insert(locations.hospitals, hospital)
+
+        elseif df.abstract_building_inn_tavernst and df.abstract_building_inn_tavernst:is_instance(bld) then
+            table.insert(locations.taverns, {
+                name = safe_get(function() return translate_name(bld.name, false) end, "Tavern"),
+                name_english = safe_get(function() return translate_name(bld.name, true) end, "Tavern")
+            })
+
+        elseif df.abstract_building_templest and df.abstract_building_templest:is_instance(bld) then
+            table.insert(locations.temples, {
+                name = safe_get(function() return translate_name(bld.name, false) end, "Temple"),
+                name_english = safe_get(function() return translate_name(bld.name, true) end, "Temple")
+            })
+
+        elseif df.abstract_building_libraryst and df.abstract_building_libraryst:is_instance(bld) then
+            table.insert(locations.libraries, {
+                name = safe_get(function() return translate_name(bld.name, false) end, "Library"),
+                name_english = safe_get(function() return translate_name(bld.name, true) end, "Library")
+            })
+
+        elseif df.abstract_building_guildhallst and df.abstract_building_guildhallst:is_instance(bld) then
+            table.insert(locations.guildhalls, {
+                name = safe_get(function() return translate_name(bld.name, false) end, "Guildhall"),
+                name_english = safe_get(function() return translate_name(bld.name, true) end, "Guildhall")
+            })
+        end
+    end
+
+    return locations
 end
 
 local function get_mining_inventory()
@@ -1096,6 +1205,7 @@ local function collect_state()
         defenses = get_defensive_structures(),
         buildings = get_buildings_summary(),
         zones = get_zones(),
+        locations = get_locations(),
         events = get_recent_events(),
         mining = get_mining_inventory()
     }
@@ -1424,14 +1534,96 @@ local function generate_briefing(state)
     if zones.meeting_areas > 0 then
         table.insert(zones_summary, string.format("%d meeting areas", zones.meeting_areas))
     end
-    if zones.hospitals > 0 then
-        table.insert(zones_summary, string.format("%d hospitals", zones.hospitals))
-    end
     if zones.barracks > 0 then
         table.insert(zones_summary, string.format("%d barracks", zones.barracks))
     end
+    if zones.pens and zones.pens > 0 then
+        table.insert(zones_summary, string.format("%d animal pens", zones.pens))
+    end
+    if zones.tombs and zones.tombs > 0 then
+        table.insert(zones_summary, string.format("%d tombs", zones.tombs))
+    end
     if #zones_summary > 0 then
         table.insert(lines, string.format("**Zones:** %s", table.concat(zones_summary, ", ")))
+    end
+
+    -- Locations (hospitals, taverns, temples, libraries, guildhalls)
+    local locs = state.locations
+    if locs then
+        -- Hospitals with supply details
+        if #locs.hospitals > 0 then
+            for _, hosp in ipairs(locs.hospitals) do
+                table.insert(lines, string.format("**Hospital:** %s", hosp.name))
+                -- Check for supply shortages
+                local shortages = {}
+                local stocked = {}
+                if hosp.supplies then
+                    for supply_name, supply_data in pairs(hosp.supplies) do
+                        if supply_data.current < supply_data.desired then
+                            table.insert(shortages, string.format("%s: %d/%d",
+                                supply_name, supply_data.current, supply_data.desired))
+                        else
+                            table.insert(stocked, supply_name)
+                        end
+                    end
+                end
+                if #shortages > 0 then
+                    table.insert(lines, "  - Shortages: " .. table.concat(shortages, ", "))
+                else
+                    table.insert(lines, "  - Fully stocked")
+                end
+            end
+        end
+
+        -- Taverns
+        if #locs.taverns > 0 then
+            local tavern_names = {}
+            for _, t in ipairs(locs.taverns) do
+                table.insert(tavern_names, t.name)
+            end
+            table.insert(lines, string.format("**Taverns:** %s", table.concat(tavern_names, ", ")))
+        end
+
+        -- Temples
+        if #locs.temples > 0 then
+            local temple_names = {}
+            for _, t in ipairs(locs.temples) do
+                table.insert(temple_names, t.name)
+            end
+            table.insert(lines, string.format("**Temples:** %s", table.concat(temple_names, ", ")))
+        end
+
+        -- Libraries
+        if #locs.libraries > 0 then
+            local lib_names = {}
+            for _, l in ipairs(locs.libraries) do
+                table.insert(lib_names, l.name)
+            end
+            table.insert(lines, string.format("**Libraries:** %s", table.concat(lib_names, ", ")))
+        end
+
+        -- Guildhalls
+        if #locs.guildhalls > 0 then
+            local guild_names = {}
+            for _, g in ipairs(locs.guildhalls) do
+                table.insert(guild_names, g.name)
+            end
+            table.insert(lines, string.format("**Guildhalls:** %s", table.concat(guild_names, ", ")))
+        end
+    end
+
+    -- Offices with assignments
+    if zones.offices and #zones.offices > 0 then
+        local office_list = {}
+        for _, office in ipairs(zones.offices) do
+            if #office.positions > 0 then
+                table.insert(office_list, string.format("%s (%s)",
+                    office.owner_name, table.concat(office.positions, ", ")))
+            else
+                table.insert(office_list, office.owner_name)
+            end
+        end
+        table.insert(lines, string.format("**Offices:** %s", table.concat(office_list, "; ")))
     end
 
     table.insert(lines, "")
