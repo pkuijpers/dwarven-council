@@ -246,6 +246,39 @@ local function get_date()
     }
 end
 
+-- Convert any year/tick to a date object
+local function tick_to_date(year, tick)
+    local month_names = {
+        "Granite", "Slate", "Felsite",
+        "Hematite", "Malachite", "Galena",
+        "Limestone", "Sandstone", "Timber",
+        "Moonstone", "Opal", "Obsidian"
+    }
+    local seasons = {'Spring', 'Summer', 'Autumn', 'Winter'}
+
+    local day = math.floor(tick / 1200) + 1
+    local month = math.floor((day - 1) / 28) + 1
+    month = math.max(1, math.min(12, month))  -- Clamp to valid range
+    local day_of_month = ((day - 1) % 28) + 1
+    local season = seasons[math.floor((month - 1) / 3) + 1]
+
+    return {
+        year = year,
+        month = month,
+        month_name = month_names[month] or "Unknown",
+        day = day_of_month,
+        season = season
+    }
+end
+
+-- Format a date object as a readable string
+local function format_date_string(date, year_only)
+    if year_only then
+        return string.format("Year %d", date.year)
+    end
+    return string.format("%d %s, Year %d", date.day, date.month_name, date.year)
+end
+
 -- Determine faction for a dwarf based on profession
 local function get_faction_for_profession(profession_name)
     for _, faction in ipairs(FACTIONS) do
@@ -866,31 +899,308 @@ local function get_defensive_structures()
     return defenses
 end
 
-local function get_recent_events()
+-- Get historical figure name by ID
+local function get_hf_name(hf_id)
+    local hf = df.historical_figure.find(hf_id)
+    if hf and hf.name then
+        return translate_name(hf.name, false)
+    end
+    return nil
+end
+
+-- Check if a historical figure is a fortress citizen
+local function is_fortress_hf(hf_id)
+    local hf = df.historical_figure.find(hf_id)
+    if not hf then return false end
+
+    -- Check if this HF has a unit in our fortress
+    if hf.unit_id and hf.unit_id ~= -1 then
+        for _, unit in ipairs(df.global.world.units.active) do
+            if unit.id == hf.unit_id and dfhack.units.isCitizen(unit) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Get fortress history combining multiple data sources
+local function get_fortress_history()
     local events = {}
+    local current_year = df.global.cur_year
     local current_tick = df.global.cur_year_tick
-    local lookback = 1200 * 28 * 3
-    
-    local important_types = {
-        CARAVAN = true, DIPLOMAT = true, SIEGE = true, AMBUSH = true,
-        BIRTH = true, DEATH = true, ARTIFACT = true, MASTERPIECE = true,
-        STRANGE_MOOD = true, MEGABEAST = true, MANDATE = true, MIGRANT = true
-    }
-    
-    for i = #df.global.world.status.announcements - 1, 0, -1 do
-        local ann = df.global.world.status.announcements[i]
-        if ann.year == df.global.cur_year then
-            local age = current_tick - ann.time
-            if age >= 0 and age < lookback then
-                local type_name = df.announcement_type[ann.type] or "OTHER"
-                if important_types[type_name] then
-                    table.insert(events, { text = ann.text, type = type_name })
+    local lookback_years = 2  -- Look back 2 years for context
+
+    local site_id = safe_get(function()
+        return df.global.world.world_data.active_site[0].id
+    end, -1)
+
+    -- Track units with completed moods (to filter out stale STRANGE_MOOD announcements)
+    local units_with_artifacts = {}
+    for _, unit in ipairs(df.global.world.units.active) do
+        if dfhack.units.isCitizen(unit) then
+            local has_artifact = safe_get(function()
+                return unit.status and unit.status.artifact_name and unit.status.artifact_name.has_name
+            end, false)
+            if has_artifact then
+                local name = translate_name(unit.name, false)
+                units_with_artifacts[name] = true
+            end
+        end
+    end
+
+    -- Track artifacts we've added to avoid duplicates
+    local seen_artifact_ids = {}
+
+    -- 1. Scan artifacts directly for written works and other items without history events
+    for _, artifact in ipairs(df.global.world.artifacts.all) do
+        local item = artifact.item
+        if item then
+            local maker_id = safe_get(function() return item.maker end, -1)
+            local is_ours = maker_id ~= -1 and is_fortress_hf(maker_id)
+
+            if is_ours then
+                local artifact_name = safe_get(function()
+                    return translate_name(artifact.name, true)
+                end, nil)
+
+                -- Only include named artifacts (skip unnamed items)
+                if artifact_name and artifact_name ~= "" then
+                    local maker_name = get_hf_name(maker_id) or "Someone"
+                    local item_desc = safe_get(function()
+                        return dfhack.items.getDescription(item, 0, true)
+                    end, "item")
+
+                    -- Get item age to estimate creation year
+                    local item_age = safe_get(function() return item.age end, 0)
+                    local creation_year = current_year
+                    if item_age > 0 then
+                        -- item.age is in ticks, a year is ~403200 ticks
+                        creation_year = current_year - math.floor(item_age / 403200)
+                    end
+
+                    if creation_year >= current_year - lookback_years then
+                        local artifact_id = safe_get(function() return artifact.id end, -1)
+                        seen_artifact_ids[artifact_id] = true
+
+                        table.insert(events, {
+                            date = tick_to_date(creation_year, 0),
+                            sort_key = creation_year * 1000000,
+                            type = "ARTIFACT",
+                            importance = "high",
+                            year_only = true,  -- We only know the year from artifact scanning
+                            text = string.format('%s created "%s" (%s)', maker_name, artifact_name, item_desc)
+                        })
+                    end
                 end
             end
         end
-        if #events >= 15 then break end
     end
-    
+
+    -- 2. Parse history events for significant fortress events
+    local history_events = df.global.world.history.events
+    local start_idx = math.max(0, #history_events - 500)  -- Limit search for performance
+
+    for i = #history_events - 1, start_idx, -1 do
+        local evt = history_events[i]
+        local evt_year = safe_get(function() return evt.year end, 0)
+
+        if evt_year < current_year - lookback_years then
+            break  -- Events are sorted by time, so we can stop
+        end
+
+        local evt_type = safe_get(function() return evt:getType() end, -1)
+        local evt_seconds = safe_get(function() return evt.seconds72 end, 0)
+        local evt_tick = evt_seconds * 72  -- Convert to ticks (approximate)
+
+        -- HIST_FIGURE_DIED - Deaths
+        if evt_type == df.history_event_type.HIST_FIGURE_DIED then
+            local hf_id = safe_get(function() return evt.victim_hf end, -1)
+            if hf_id ~= -1 then
+                local name = get_hf_name(hf_id)
+                local death_cause = safe_get(function()
+                    return df.death_type[evt.death_cause]
+                end, "unknown")
+
+                -- Only include if it seems fortress-related
+                local evt_site = safe_get(function() return evt.site end, -1)
+                if evt_site == site_id or is_fortress_hf(hf_id) then
+                    local cause_text = death_cause:lower():gsub("_", " ")
+                    table.insert(events, {
+                        date = tick_to_date(evt_year, evt_tick),
+                        sort_key = evt_year * 1000000 + evt_seconds,
+                        type = "DEATH",
+                        importance = "high",
+                        text = string.format("%s died (%s)", name or "Someone", cause_text)
+                    })
+                end
+            end
+        end
+
+        -- CHANGE_HF_STATE - Migration/visitors becoming residents
+        if evt_type == df.history_event_type.CHANGE_HF_STATE then
+            local hf_id = safe_get(function() return evt.hfid end, -1)
+            local new_state = safe_get(function() return evt.state end, -1)
+            local evt_site = safe_get(function() return evt.site end, -1)
+
+            if evt_site == site_id and hf_id ~= -1 then
+                local name = get_hf_name(hf_id)
+                -- state 1 = settled, which indicates migration
+                if new_state == 1 and name then
+                    table.insert(events, {
+                        date = tick_to_date(evt_year, evt_tick),
+                        sort_key = evt_year * 1000000 + evt_seconds,
+                        type = "MIGRANT",
+                        importance = "medium",
+                        text = string.format("%s joined the fortress", name)
+                    })
+                end
+            end
+        end
+
+        -- ARTIFACT_CREATED - Strange mood completion (skip if already found in artifact scan)
+        if evt_type == df.history_event_type.ARTIFACT_CREATED then
+            local artifact_id = safe_get(function() return evt.artifact_id end, -1)
+
+            -- Skip if we already added this artifact from the direct scan
+            if artifact_id ~= -1 and not seen_artifact_ids[artifact_id] then
+                -- Try multiple field names for historical figure ID
+                local hf_id = safe_get(function() return evt.hfid end, nil)
+                           or safe_get(function() return evt.hist_figure_id end, nil)
+                           or safe_get(function() return evt.creator_hfid end, nil)
+                           or -1
+                local evt_site = safe_get(function() return evt.site end, -1)
+                local artifact = df.artifact_record.find(artifact_id)
+                if artifact and artifact.item then
+                    -- Get maker from the item itself (more reliable)
+                    local item_maker_id = safe_get(function() return artifact.item.maker end, -1)
+                    local is_ours = (evt_site == site_id)
+                                 or (item_maker_id ~= -1 and is_fortress_hf(item_maker_id))
+                                 or (hf_id ~= -1 and is_fortress_hf(hf_id))
+
+                    if is_ours then
+                        -- Get maker name from item.maker (historical figure ID)
+                        local maker_name = nil
+                        if item_maker_id ~= -1 then
+                            maker_name = get_hf_name(item_maker_id)
+                        end
+                        if not maker_name and hf_id ~= -1 then
+                            maker_name = get_hf_name(hf_id)
+                        end
+                        maker_name = maker_name or "Someone"
+
+                        local artifact_name = safe_get(function()
+                            return translate_name(artifact.name, true)
+                        end, "an artifact")
+
+                        local item_desc = safe_get(function()
+                            return dfhack.items.getDescription(artifact.item, 0, true)
+                        end, "item")
+
+                        -- Use seconds72 for date if available
+                        -- seconds72 is time in 72-second intervals since year start
+                        local has_precise_date = evt_seconds > 0
+                        local actual_tick = 0
+                        if has_precise_date then
+                            -- A year has about 403200 ticks, seconds72 max is ~50000
+                            actual_tick = math.floor((evt_seconds / 50000) * 403200)
+                        end
+
+                        table.insert(events, {
+                            date = tick_to_date(evt_year, actual_tick),
+                            sort_key = evt_year * 1000000 + evt_seconds,
+                            type = "ARTIFACT",
+                            importance = "high",
+                            year_only = not has_precise_date,
+                            text = string.format('%s created "%s" (%s)', maker_name, artifact_name, item_desc)
+                        })
+                    end
+                end
+            end
+        end
+    end
+
+    -- 3. Get recent announcements (but filter out completed moods)
+    local important_types = {
+        CARAVAN = true, DIPLOMAT = true, SIEGE = true, AMBUSH = true,
+        BIRTH = true, DEATH = true, MASTERPIECE = true,
+        STRANGE_MOOD = true, MEGABEAST = true, MANDATE = true, MIGRANT = true
+    }
+
+    local lookback_ticks = 1200 * 28 * 6  -- 6 months of announcements
+
+    for i = #df.global.world.status.announcements - 1, 0, -1 do
+        local ann = df.global.world.status.announcements[i]
+        local ann_year = safe_get(function() return ann.year end, 0)
+        local ann_tick = safe_get(function() return ann.time end, 0)
+
+        if ann_year < current_year - 1 then
+            break
+        end
+
+        -- Calculate if within lookback period
+        local is_recent = false
+        if ann_year == current_year then
+            is_recent = (current_tick - ann_tick) < lookback_ticks
+        elseif ann_year == current_year - 1 then
+            local ticks_in_year = 1200 * 28 * 12
+            local age = (ticks_in_year - ann_tick) + current_tick
+            is_recent = age < lookback_ticks
+        end
+
+        if is_recent then
+            local type_name = safe_get(function()
+                return df.announcement_type[ann.type]
+            end, "OTHER")
+
+            if important_types[type_name] then
+                local text = safe_get(function() return ann.text end, "")
+
+                -- Filter out STRANGE_MOOD if the dwarf already made an artifact
+                local skip = false
+                if type_name == "STRANGE_MOOD" then
+                    for unit_name, _ in pairs(units_with_artifacts) do
+                        if text:find(unit_name) then
+                            skip = true
+                            break
+                        end
+                    end
+                end
+
+                if not skip then
+                    table.insert(events, {
+                        date = tick_to_date(ann_year, ann_tick),
+                        sort_key = ann_year * 1000000 + ann_tick,
+                        type = type_name,
+                        importance = (type_name == "SIEGE" or type_name == "AMBUSH" or type_name == "MEGABEAST") and "high" or "medium",
+                        text = text
+                    })
+                end
+            end
+        end
+
+        if #events >= 30 then break end
+    end
+
+    -- Sort events by date (most recent first)
+    table.sort(events, function(a, b) return a.sort_key > b.sort_key end)
+
+    -- Limit to 20 most relevant events
+    local result = {}
+    for i = 1, math.min(20, #events) do
+        result[i] = events[i]
+    end
+
+    return result
+end
+
+-- Legacy function for compatibility
+local function get_recent_events()
+    local history = get_fortress_history()
+    local events = {}
+    for _, evt in ipairs(history) do
+        table.insert(events, { text = evt.text, type = evt.type })
+    end
     return events
 end
 
@@ -1206,7 +1516,7 @@ local function collect_state()
         buildings = get_buildings_summary(),
         zones = get_zones(),
         locations = get_locations(),
-        events = get_recent_events(),
+        events = get_fortress_history(),
         mining = get_mining_inventory()
     }
 end
@@ -1627,15 +1937,45 @@ local function generate_briefing(state)
     end
 
     table.insert(lines, "")
-    
-    -- Events
+
+    -- Events with dates
     if #state.events > 0 then
-        table.insert(lines, "## Recent Events")
+        table.insert(lines, "## Fortress Chronicle")
+        table.insert(lines, "")
+
+        -- Group events by importance
+        local high_importance = {}
+        local other_events = {}
+
         for _, evt in ipairs(state.events) do
-            table.insert(lines, string.format("  - [%s] %s", evt.type, evt.text))
+            if evt.importance == "high" then
+                table.insert(high_importance, evt)
+            else
+                table.insert(other_events, evt)
+            end
+        end
+
+        -- Show high-importance events first
+        if #high_importance > 0 then
+            table.insert(lines, "**Notable Events:**")
+            for _, evt in ipairs(high_importance) do
+                local date_str = evt.date and format_date_string(evt.date, evt.year_only) or "Unknown date"
+                table.insert(lines, string.format("  - [%s] %s", date_str, evt.text))
+            end
+            table.insert(lines, "")
+        end
+
+        -- Show other recent events
+        if #other_events > 0 then
+            table.insert(lines, "**Recent Activity:**")
+            for i, evt in ipairs(other_events) do
+                if i > 10 then break end  -- Limit other events
+                local date_str = evt.date and format_date_string(evt.date, evt.year_only) or "Unknown date"
+                table.insert(lines, string.format("  - [%s] %s", date_str, evt.text))
+            end
         end
     end
-    
+
     return table.concat(lines, "\n")
 end
 
