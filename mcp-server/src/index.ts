@@ -8,7 +8,7 @@ import {
     CallToolResult,
     TextContent
 } from '@modelcontextprotocol/sdk/types.js';
-import { DFHackClient } from './dfhack-client.js';
+import { DFHackClient } from '@dwarvencouncil/dfhack-client';
 
 // Create a fresh connection for each request to avoid stale connection issues
 async function getClient(): Promise<DFHackClient> {

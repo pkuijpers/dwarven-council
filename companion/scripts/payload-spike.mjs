@@ -7,7 +7,7 @@
 //
 // Run with: node companion/scripts/payload-spike.mjs
 
-import { DFHackClient } from '../../mcp-server/dist/dfhack-client.js';
+import { DFHackClient } from '@dwarvencouncil/dfhack-client';
 
 const START_MARKER = '===DWARVEN_ASSEMBLY_STATE_JSON===';
 const END_MARKER = '===DWARVEN_ASSEMBLY_STATE_END===';

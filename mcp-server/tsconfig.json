@@ -11,6 +11,7 @@
     "forceConsistentCasingInFileNames": true,
     "declaration": true
   },
+  "references": [{ "path": "../shared/dfhack-client" }],
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

@@ -9,9 +9,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "declaration": true
+    "declaration": true,
+    "composite": true
   },
-  "references": [{ "path": "../shared/dfhack-client" }],
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
