@@ -1,0 +1,24 @@
+{
+  "name": "dwarven-companion",
+  "version": "1.0.0",
+  "description": "Companion app for Dwarven Governance, replacing the copy-paste LLM workflow with a local service",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsc && node dist/main.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest"
+  },
+  "devDependencies": {
+    "vitest": "latest",
+    "vite": "latest",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
