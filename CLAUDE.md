@@ -93,7 +93,7 @@ mcp__dfhack__dfhack_command with command: "help" args: ["dwarven-coop"]
 **Prerequisites:**
 - Dwarf Fortress must be running with a fortress loaded
 - DFHack remote server runs automatically on port 5000
-- MCP server must be built: `cd mcp-server && npm install && npm run build`
+- MCP server must be built: from the repo root, `npm install --legacy-peer-deps` (once, for the whole npm workspace), then `npm run build` (builds `shared/dfhack-client`, `mcp-server`, and `companion`) — or `npm run build -w mcp-server` to build just the MCP server
 
 ### Testing Installation
 

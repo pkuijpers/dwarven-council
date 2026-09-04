@@ -352,12 +352,12 @@ For developers working on these scripts, an MCP (Model Context Protocol) server 
 
 ### Setup
 
-1. **Build the MCP server:**
+1. **Build the MCP server:** `mcp-server` is part of an npm workspace, so install and build from the repo root:
    ```bash
-   cd mcp-server
-   npm install
+   npm install --legacy-peer-deps
    npm run build
    ```
+   This installs dependencies for the whole workspace (`shared/dfhack-client`, `mcp-server`, `companion`) and builds all three. To build just the MCP server after that: `npm run build -w mcp-server`.
 
 2. **Configure Claude Code** — the `.mcp.json` file in the project root auto-configures the server:
    ```json
