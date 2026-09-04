@@ -13,6 +13,7 @@
 
 local argparse = require('argparse')
 local utils = require('utils')
+local json = require('json')
 
 -- ============================================================
 -- Utility Functions
@@ -2147,19 +2148,19 @@ local function cmd_members()
 end
 
 local function cmd_assembly()
-    print("+============================================================+")
-    print("|       DWARVEN COOPERATIVE - GENERAL ASSEMBLY               |")
-    print("|                   Quarterly Meeting                        |")
-    print("+============================================================+")
-    print("")
-    
     local state = collect_state()
     local briefing = generate_briefing(state)
-    local system_prompt = build_system_prompt(state)
-    local user_prompt = build_user_prompt(state, briefing)
 
-    -- Print the prompt for manual copy/paste to LLM
-    print_llm_prompt(system_prompt, user_prompt)
+    -- df.unit userdata cannot be JSON-encoded and nothing downstream needs it
+    for _, faction in pairs(state.population.factions) do
+        faction.dwarves = nil
+    end
+
+    local payload = json.encode({ schema = 1, state = state, briefing = briefing }, { pretty = false })
+    print("===DWARVEN_ASSEMBLY_STATE_JSON===")
+    print(#payload)
+    print(payload)
+    print("===DWARVEN_ASSEMBLY_STATE_END===")
 end
 
 -- ============================================================
