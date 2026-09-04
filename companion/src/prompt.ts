@@ -9,6 +9,36 @@
 import { asRecord } from './payload.js';
 import { FACTION_ORDER, FACTION_NARRATIVES } from './factions.js';
 import type { CoopState, Faction, PopulationStress } from './types.js';
+import type { Cycle } from './history.js';
+
+/**
+ * The prior quarter's adopted OKRs (or, failing that, the raw assembly
+ * transcript), carried forward so the LLM can review progress against
+ * current state. Constructed via `previousQuarterFrom`.
+ */
+export interface PreviousQuarter {
+  year: number;
+  seasonName: string;
+  okrs: string;
+}
+
+/**
+ * Implements the continuity spec's degradation rule: prefer the extracted
+ * `cycle.okrs`; if empty or absent, fall back to the full `cycle.assembly`
+ * transcript; if the cycle failed, or neither field has usable content,
+ * there is nothing to carry forward, so return `undefined` and let
+ * `buildUserPrompt` omit the section entirely.
+ */
+export function previousQuarterFrom(
+  cycle: Cycle | undefined
+): PreviousQuarter | undefined {
+  if (!cycle || cycle.status === 'failed') return undefined;
+
+  const okrs = cycle.okrs && cycle.okrs.length > 0 ? cycle.okrs : cycle.assembly;
+  if (!okrs) return undefined;
+
+  return { year: cycle.year, seasonName: cycle.seasonName, okrs };
+}
 
 /**
  * Port of Lua's `pct(n, total)`:
@@ -124,7 +154,11 @@ Submitted by: [Faction]
   );
 }
 
-export function buildUserPrompt(state: CoopState, briefing: string): string {
+export function buildUserPrompt(
+  state: CoopState,
+  briefing: string,
+  previous?: PreviousQuarter
+): string {
   const pop = state.population;
   const available = pop.adults - pop.military - pop.injured;
 
@@ -158,6 +192,14 @@ export function buildUserPrompt(state: CoopState, briefing: string): string {
   prompt += 'Suggested focus areas: ' + focusAreas.join(', ') + '\n\n';
   prompt +=
     'Conduct the General Assembly and produce the OKRs for the coming quarter through democratic voting.';
+
+  if (previous) {
+    prompt += '\n\n## Previous Quarter\n';
+    prompt += `Year ${previous.year}, ${previous.seasonName} -- OKRs adopted by the previous General Assembly:\n\n`;
+    prompt += previous.okrs + '\n\n';
+    prompt +=
+      'Open by reviewing progress against these OKRs relative to the current fortress state above, before conducting this quarter\'s assembly.';
+  }
 
   return prompt;
 }

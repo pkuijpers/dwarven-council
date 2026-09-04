@@ -7,9 +7,11 @@ import {
   calculateHappiness,
   buildSystemPrompt,
   buildUserPrompt,
+  previousQuarterFrom,
 } from '../src/prompt.js';
 import { FACTION_NARRATIVES } from '../src/factions.js';
 import type { PopulationStress } from '../src/types.js';
+import type { Cycle } from '../src/history.js';
 
 const fixturePath = (name: string) =>
   fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
@@ -202,5 +204,141 @@ describe('buildUserPrompt focus areas', () => {
     state.population.eligible_voters = 40;
     const prompt = buildUserPrompt(state, 'briefing');
     expect(prompt).toContain('Quorum: 21 votes');
+  });
+});
+
+describe('buildUserPrompt previous-quarter continuity', () => {
+  async function loadState() {
+    const payload = extractPayload(
+      readFileSync(fixturePath('raw-assembly-output.txt'), 'utf8')
+    );
+    return structuredClone(payload.state);
+  }
+
+  it('omitting `previous` leaves the output byte-identical to calling without a third argument (regression lock)', async () => {
+    const state = await loadState();
+    const withoutArg = buildUserPrompt(state, 'briefing');
+    const withUndefined = buildUserPrompt(state, 'briefing', undefined);
+    expect(withUndefined).toBe(withoutArg);
+  });
+
+  it('with `previous` present, appends a section with the year/season header, the OKR text verbatim, and a review instruction', async () => {
+    const state = await loadState();
+    const withoutPrevious = buildUserPrompt(state, 'briefing');
+    const prompt = buildUserPrompt(state, 'briefing', {
+      year: 105,
+      seasonName: 'Summer',
+      okrs: '### Motion 1: Dig Deeper\n- KR1: Excavate 50 tiles',
+    });
+
+    // Task 5's golden output is a strict prefix -- the new section is
+    // appended after the closing instruction, not interleaved with it.
+    expect(prompt.startsWith(withoutPrevious)).toBe(true);
+    expect(prompt).toContain('105');
+    expect(prompt).toContain('Summer');
+    expect(prompt).toContain(
+      '### Motion 1: Dig Deeper\n- KR1: Excavate 50 tiles'
+    );
+    expect(prompt).toMatch(/review(ing)? progress/i);
+    expect(prompt).toMatch(/current fortress state/i);
+  });
+
+  it('previousQuarterFrom prefers cycle.okrs when present', () => {
+    const cycle: Cycle = {
+      id: '105-2',
+      year: 105,
+      seasonIndex: 2,
+      seasonName: 'Summer',
+      triggeredAt: '2026-01-01T00:00:00.000Z',
+      status: 'completed',
+      attempts: 1,
+      briefing: 'briefing text',
+      state: {},
+      assembly: 'full assembly transcript',
+      okrs: 'extracted okrs text',
+    };
+    expect(previousQuarterFrom(cycle)).toEqual({
+      year: 105,
+      seasonName: 'Summer',
+      okrs: 'extracted okrs text',
+    });
+  });
+
+  it('previousQuarterFrom falls back to cycle.assembly when okrs is empty', () => {
+    const cycle: Cycle = {
+      id: '105-2',
+      year: 105,
+      seasonIndex: 2,
+      seasonName: 'Summer',
+      triggeredAt: '2026-01-01T00:00:00.000Z',
+      status: 'completed',
+      attempts: 1,
+      briefing: 'briefing text',
+      state: {},
+      assembly: 'full assembly transcript',
+      okrs: '',
+    };
+    expect(previousQuarterFrom(cycle)).toEqual({
+      year: 105,
+      seasonName: 'Summer',
+      okrs: 'full assembly transcript',
+    });
+  });
+
+  it('previousQuarterFrom falls back to cycle.assembly when okrs is absent', () => {
+    const cycle: Cycle = {
+      id: '105-2',
+      year: 105,
+      seasonIndex: 2,
+      seasonName: 'Summer',
+      triggeredAt: '2026-01-01T00:00:00.000Z',
+      status: 'completed',
+      attempts: 1,
+      briefing: 'briefing text',
+      state: {},
+      assembly: 'full assembly transcript',
+    };
+    expect(previousQuarterFrom(cycle)).toEqual({
+      year: 105,
+      seasonName: 'Summer',
+      okrs: 'full assembly transcript',
+    });
+  });
+
+  it('previousQuarterFrom returns undefined for a failed cycle', () => {
+    const cycle: Cycle = {
+      id: '105-2',
+      year: 105,
+      seasonIndex: 2,
+      seasonName: 'Summer',
+      triggeredAt: '2026-01-01T00:00:00.000Z',
+      status: 'failed',
+      attempts: 3,
+      briefing: 'briefing text',
+      state: {},
+      assembly: 'full assembly transcript',
+      okrs: 'extracted okrs text',
+      error: 'boom',
+    };
+    expect(previousQuarterFrom(cycle)).toBeUndefined();
+  });
+
+  it('previousQuarterFrom returns undefined when neither okrs nor assembly is available', () => {
+    const cycle: Cycle = {
+      id: '105-2',
+      year: 105,
+      seasonIndex: 2,
+      seasonName: 'Summer',
+      triggeredAt: '2026-01-01T00:00:00.000Z',
+      status: 'completed',
+      attempts: 1,
+      briefing: 'briefing text',
+      state: {},
+    };
+    expect(previousQuarterFrom(cycle)).toBeUndefined();
+  });
+
+  it('previousQuarterFrom returns undefined when cycle is undefined', () => {
+    expect(previousQuarterFrom(undefined)).toBeUndefined();
   });
 });
