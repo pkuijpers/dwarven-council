@@ -92,16 +92,28 @@ parses it whole, so multi-line output is fine.
 `print_llm_prompt()` (line 139) are removed. Their logic moves to the companion app. The
 copy-paste path for the cooperative disappears — that was the point of this work.
 
-### Faction narrative metadata must be exported
+### Faction narrative metadata moves to companion
 
 `build_system_prompt()` currently reads faction `description` and `priorities` straight
-from the module-level `FACTIONS` table, not from `state`. `analyze_population()` only puts
-`name`, `members`, `votes` and `dwarves` into `summary.factions[id]`.
+from the module-level `FACTIONS` table. Those two fields are grep-confirmed dead anywhere
+else in `dwarven-coop.lua` — `generate_briefing()` only ever uses `id`, `name` and `members`
+— so once `build_system_prompt()` is deleted, nothing in Lua needs them.
 
-If the system prompt is built in TypeScript, that narrative metadata has to reach it.
-Rather than duplicating the `FACTIONS` descriptions in TypeScript (a drift risk), extend
-`analyze_population()`'s per-faction summary with `description` and `priorities` copied
-from the `FACTIONS` entry. Lua stays the single source of truth.
+`description` and `priorities` are removed from Lua's `FACTIONS` table entirely; they are
+governance narrative framing, not game state, and Lua should not be the source of truth for
+them. `FACTIONS` keeps only what Lua actually needs: `id`, `name` (used by
+`generate_briefing()`) and `professions` (used to map dwarves to factions — that mapping is
+itself derived from DF profession data, so it counts as game state). `analyze_population()`'s
+per-faction summary (`summary.factions[id]`) stays as `name`, `members`, `votes` — no
+`description`/`priorities` are added to it or exported.
+
+Companion owns a static TypeScript table keyed by faction `id` (`producers`, `food`,
+`delvers`, `defenders`, `caregivers`, `services`) holding `description` and `priorities`,
+seeded from the values above. The prompt builder joins this against the `id`s coming back in
+`state.population.factions` to build the faction table in the system prompt. Companion is now
+the single source of truth for this text; the two-copy "drift risk" the earlier version of
+this design avoided is accepted deliberately, in exchange for Lua doing nothing but reading
+game state.
 
 `population.factions[*].dwarves` (raw DF unit objects, used only for spokesperson selection)
 must be stripped before encoding — it is the one non-serializable field in the payload, and
@@ -153,8 +165,9 @@ cheap.
 A direct TypeScript port of the two deleted Lua functions, taking the parsed
 `{ state, briefing }` payload:
 
-- **System prompt** — the governance framing, faction list (name, vote count, share,
-  description, priorities), assembly procedure, output format and guidelines. Static text
+- **System prompt** — the governance framing, faction list (name and vote count/share from
+  `state`, description/priorities from companion's own faction narrative table, joined by
+  `id`), assembly procedure, output format and guidelines. Static text
   plus the faction table, exactly as `build_system_prompt()` builds it today.
 - **User prompt** — the briefing markdown, available workforce
   (`adults - military - injured`), quorum (`floor(eligible_voters / 2) + 1`), derived focus
