@@ -347,5 +347,51 @@ describe('createServer', () => {
         expect(fakePoller.cycleListeners).toHaveLength(0);
       });
     });
+
+    // Regression test for the shutdown hang found in Task 14 review: Node's
+    // `server.close(callback)` never fires `callback` while any connection
+    // stays open, and an SSE stream is exactly such a connection (it never
+    // ends on its own). `main.ts`'s shutdown handler used to call only
+    // `server.close()`, which hung forever whenever a browser tab with the
+    // UI open (i.e. an open `/api/events` connection) was still connected at
+    // signal time. The fix is `server.closeAllConnections()` alongside
+    // `server.close()`. This test exercises the real `http` server directly
+    // (not a fake), so it would fail if that call were ever removed.
+    it('server.closeAllConnections() lets server.close() finish promptly with an open SSE connection', async () => {
+      // Starts the shared server too (leaving it untouched) purely so the
+      // outer afterEach's stopServer() has a live, still-listening `server`
+      // to close as usual -- this test performs its own close sequence on a
+      // separate `localServer` instance and shouldn't interact with that
+      // shared teardown.
+      await startServer();
+
+      const localServer = createServer({
+        poller: fakePoller as unknown as Poller,
+        history: fakeHistory as unknown as HistoryStore,
+        publicDir: pathToFileURL(publicDirPath + sep),
+      });
+      await new Promise<void>((resolve) => localServer.listen(0, resolve));
+      const { port } = localServer.address() as AddressInfo;
+
+      // Open a real SSE connection and deliberately leave it open (no
+      // abort) -- this is exactly what a browser tab with the UI open looks
+      // like at shutdown time.
+      const controller = new AbortController();
+      const res = await fetch(`http://localhost:${port}/api/events`, { signal: controller.signal });
+      expect(res.status).toBe(200);
+
+      const closed = new Promise<void>((resolve, reject) => {
+        localServer.close((err) => (err ? reject(err) : resolve()));
+      });
+      localServer.closeAllConnections();
+
+      const outcome = await Promise.race([
+        closed.then(() => 'closed' as const),
+        new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 2000)),
+      ]);
+      expect(outcome).toBe('closed');
+
+      controller.abort();
+    });
   });
 });

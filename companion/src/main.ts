@@ -47,6 +47,13 @@ async function main(): Promise<void> {
     server.close(() => {
       process.exit(0);
     });
+    // server.close()'s callback only fires once every open connection ends.
+    // A long-lived SSE stream (GET /api/events) never ends on its own, so
+    // without this the process would hang forever whenever a browser tab
+    // with the UI open is still connected at shutdown time. Force-close all
+    // sockets (available since Node 18.2) so the close callback above fires
+    // promptly.
+    server.closeAllConnections();
   };
 
   process.on('SIGINT', () => shutdown('SIGINT'));
