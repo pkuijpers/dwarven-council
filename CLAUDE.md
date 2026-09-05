@@ -95,14 +95,7 @@ mcp__dfhack__dfhack_command with command: "help" args: ["dwarven-coop"]
 - DFHack remote server runs automatically on port 5000
 - MCP server must be built: `cd mcp-server && npm install && npm run build`
 
-### Testing Installation
-
-Run the test script to verify installation:
-```bash
-./test-installation.sh
-```
-
-This checks if scripts are installed and shows log file locations.
+**Connection handling:** `DFHackClient.connect()` (`mcp-server/src/dfhack-client.ts`) always force-disconnects and opens a brand-new socket before each connection rather than reusing one — this was a deliberate fix for stale-connection bugs (see commit `3b86aab`). Don't "optimize" this into a persistent/pooled connection without re-verifying that issue is actually gone.
 
 ### Verifying Scripts Work
 
@@ -157,25 +150,27 @@ Each script follows this data flow:
 DFHack Memory → collect_state() → Briefing/Report → LLM Prompt → Claude API → OKRs
 ```
 
-The `collect_state()` function aggregates data from:
-- `get_date()` - Current game date
-- `get_fortress_info()` - Fortress name and location
-- `analyze_population()` - Dwarves grouped by profession into factions/units/councils
-- `get_resources()` - Food, drink, wealth from `df.global.world.items.all`
-- `get_military()` - Squad counts from `df.global.world.squads.all`
-- `get_buildings_summary()` - Building counts
-- `get_recent_events()` - Announcements from `df.global.world.status.announcements`
+**The three scripts have diverged** — `dwarven-coop.lua` is the most actively developed and its `collect_state()` collects significantly more than `dwarven-reich.lua` / `dwarven-corp.lua`. Don't assume feature parity between the scripts; check each file's own `collect_state()` before assuming a helper exists elsewhere.
+
+- **Common to all three** (baseline): `get_date()`, `get_fortress_info()`, `analyze_population()` (factions/units/councils), `get_resources(population)` (food, drink, wealth from `df.global.world.items.all`), `get_military()` (from `df.global.world.squads.all`), `get_buildings_summary()`.
+- **`dwarven-coop.lua` only**: `get_trade_goods()`, `get_defensive_structures()`, `get_zones()` (bedrooms/dining halls/offices/etc. from `df.global.world.buildings.all` Civzones), `get_locations()` (hospitals, taverns, temples, offices), `get_mining_inventory()`, `select_faction_spokespersons()`, and `get_fortress_history()` — a richer event feed than the other scripts' plain `get_recent_events()`, combining announcements with historical-figure lookups (`get_hf_name()`, `is_fortress_hf()` via `df.historical_figure.find()`) and artifact tracking, with real in-game dates via `tick_to_date()` / `format_date_string()`.
+
+### Wealth / Item Counting
+
+`is_item_onsite(item)` filters out items flagged as off-site / world-history-only before they're counted or valued — without it, wealth and resource totals double-count items belonging to other historical sites. Resource and trade-goods totals use `dfhack.items.getValue(item)` per item (not a cached/stored item value) summed over the on-site set. Present in all three scripts; if you add a new item-counting function, filter through `is_item_onsite()` first.
 
 ### DFHack API Access
 
 Scripts access Dwarf Fortress memory structures through DFHack's Lua API:
 
 - `df.global.world.units.active` - All units including citizens
-- `df.global.world.items.all` - Items for counting food/drink
+- `df.global.world.items.all` - Items for counting food/drink (filter with `is_item_onsite()` first)
 - `df.global.world.squads.all` - Military organization
 - `df.global.world.status.announcements` - Recent game events
-- `df.global.world.buildings.all` - Building inventory
+- `df.global.world.buildings.all` - Building inventory, and Civzones for `get_zones()`/`get_locations()` (coop only)
+- `df.historical_figure.find()` - Historical figure lookups for event/artifact attribution (coop only, in `get_fortress_history()`)
 - `dfhack.units.*` - Helper functions for unit analysis (age, profession, etc.)
+- `dfhack.items.getValue()` - Per-item wealth valuation
 
 ### Faction/Organization Systems
 
