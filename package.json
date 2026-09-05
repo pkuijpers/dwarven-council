@@ -1,4 +1,5 @@
 {
+  "name": "dwarvencouncil",
   "private": true,
   "workspaces": ["shared/*", "mcp-server", "companion"],
   "scripts": {
