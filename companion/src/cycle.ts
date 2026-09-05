@@ -75,11 +75,30 @@ export async function runCycle(date: GameDate, deps: CycleDeps): Promise<Cycle> 
     );
   }
 
-  const previousCycle = await deps.history.latest();
-  const previous = previousQuarterFrom(previousCycle);
+  let system: string;
+  let user: string;
+  try {
+    // The previous quarter is the most recent history record for a
+    // DIFFERENT season than the one currently running -- never this
+    // cycle's own id. Using `history.latest()` here would be wrong on a
+    // bounded retry (it would return this season's own prior failed
+    // attempt) and on a manual re-run of an already-completed season (it
+    // would feed the assembly its own completed record as "previous").
+    const allCycles = await deps.history.load();
+    const previousCycle = allCycles.filter((c) => c.id !== id).at(-1);
+    const previous = previousQuarterFrom(previousCycle);
 
-  const system = buildSystemPrompt(payload.state);
-  const user = buildUserPrompt(payload.state, payload.briefing, previous);
+    system = buildSystemPrompt(payload.state);
+    user = buildUserPrompt(payload.state, payload.briefing, previous);
+  } catch (err) {
+    const message =
+      err instanceof Error
+        ? `Failed to build assembly prompt: ${err.message}`
+        : `Failed to build assembly prompt: ${String(err)}`;
+    const record = failed(message, payload.briefing, payload.state);
+    await deps.history.upsert(record);
+    return record;
+  }
 
   let assemblyText: string;
   try {

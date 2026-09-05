@@ -93,7 +93,7 @@ const tools = [
     },
     {
         name: 'coop_assembly',
-        description: 'Generate the full LLM prompt for the General Assembly OKR generation (runs dwarven-coop assembly)',
+        description: 'Export current fortress state as JSON between sentinel markers, for the companion app to consume (runs dwarven-coop assembly)',
         inputSchema: {
             type: 'object',
             properties: {},

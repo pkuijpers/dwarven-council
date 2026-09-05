@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     publicDir: new URL('../public/', import.meta.url),
   });
 
-  server.listen(config.companionPort, () => {
+  server.listen(config.companionPort, '127.0.0.1', () => {
     console.log(`Dwarven Companion listening on http://localhost:${config.companionPort}`);
   });
 

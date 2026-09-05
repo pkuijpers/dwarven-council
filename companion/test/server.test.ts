@@ -225,6 +225,10 @@ describe('createServer', () => {
     expect(body).not.toContain('TOP SECRET');
   });
 
+  // This request never reaches the traversal guard: the WHATWG URL parser
+  // normalizes '..' away before fetch() ever sends it. Kept for
+  // documentation; the encoded-slash case above is the one that actually
+  // exercises resolveStaticPath's guard.
   it('a literal ".." path segment never returns file contents outside publicDir', async () => {
     await startServer();
     const res = await fetch(`${baseUrl}/../secret.txt`);

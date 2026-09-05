@@ -386,7 +386,7 @@ For developers working on these scripts, an MCP (Model Context Protocol) server 
 
 1. **Build the MCP server:** `mcp-server` is part of an npm workspace, so install and build from the repo root:
    ```bash
-   npm install --legacy-peer-deps
+   npm install
    npm run build
    ```
    This installs dependencies for the whole workspace (`shared/dfhack-client`, `mcp-server`, `companion`) and builds all three. To build just the MCP server after that: `npm run build -w mcp-server`.

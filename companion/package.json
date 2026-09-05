@@ -7,18 +7,18 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -b",
-    "start": "node dist/main.js",
-    "dev": "tsc -b && node dist/main.js",
+    "start": "node --env-file=.env dist/main.js",
+    "dev": "tsc -b && node --env-file=.env dist/main.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "latest",
+    "@anthropic-ai/sdk": "^0.123.0",
     "@dwarvencouncil/dfhack-client": "^1.0.0"
   },
   "devDependencies": {
-    "vitest": "latest",
-    "vite": "latest",
+    "vitest": "^5.0.0",
+    "vite": "^8.2.2",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
   }

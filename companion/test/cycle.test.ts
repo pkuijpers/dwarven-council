@@ -311,6 +311,73 @@ describe('runCycle', () => {
     expect(req.user).not.toContain('## Previous Quarter');
   });
 
+  it('11c. a retry of the CURRENT season (its own failed attempt in history) still surfaces the real prior-season OKRs, not its own empty record', async () => {
+    const { deps, assembly } = makeDeps();
+    (deps.history as unknown as FakeHistoryStore).records.push(
+      {
+        id: '105-3',
+        year: 105,
+        seasonIndex: 3,
+        seasonName: 'Winter',
+        triggeredAt: '2026-06-01T00:00:00.000Z',
+        status: 'completed',
+        attempts: 1,
+        briefing: 'prior briefing',
+        state: {},
+        okrs: 'REAL PREVIOUS OKRS',
+      },
+      {
+        id: '106-0',
+        year: 106,
+        seasonIndex: 0,
+        seasonName: 'Spring',
+        triggeredAt: '2026-09-01T00:00:00.000Z',
+        status: 'failed',
+        attempts: 1,
+        briefing: '',
+        state: {},
+        error: 'previous failure',
+      }
+    );
+
+    await runCycle(date, deps);
+
+    const req = assembly.generateAssembly.mock.calls[0][0];
+    expect(req.user).toContain('REAL PREVIOUS OKRS');
+    expect(req.user).not.toContain('106-0');
+  });
+
+  it('13. a structurally-invalid payload (state.population missing) still produces a recorded failed cycle instead of throwing', async () => {
+    // Fixture layout: [marker, declared-length, JSON body, end marker, ''].
+    const parsed = JSON.parse(rawFixture.split('\n')[2]) as {
+      schema: number;
+      state: Record<string, unknown>;
+      briefing: string;
+    };
+    delete parsed.state.population;
+    const body = JSON.stringify(parsed);
+    const brokenOutput = [
+      '===DWARVEN_ASSEMBLY_STATE_JSON===',
+      String(body.length),
+      body,
+      '===DWARVEN_ASSEMBLY_STATE_END===',
+      '',
+    ].join('\n');
+
+    const { deps, history, assembly } = makeDeps({
+      runCommand: vi.fn(async () => ({ success: true, output: brokenOutput })),
+    });
+
+    const result = await runCycle(date, deps);
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toBeTruthy();
+    expect(result.error).toContain('Failed to build assembly prompt');
+    expect(history.records).toHaveLength(1);
+    expect(history.records[0]).toEqual(result);
+    expect(assembly.generateAssembly).not.toHaveBeenCalled();
+  });
+
   it('12. a season-name mismatch between SEASON_NAMES[seasonIndex] and state.date.season is recorded as a warning, not a crash', async () => {
     const mismatched: GameDate = { ...date, seasonIndex: 1, seasonName: 'Summer' };
     const { deps, history } = makeDeps();
