@@ -322,9 +322,14 @@ a plain-text copy of what they printed. There is no `call_llm()` function in
 either script; the LLM call is entirely manual (you paste the prompt
 yourself), so there's nothing to reconfigure for a different provider.
 
-`dwarven-coop.lua` has no `CONFIG` table at all. Its behavior (which model,
-polling interval, etc.) is controlled by the companion app's environment
-variables — see `companion/.env.example` and [Companion App](#companion-app).
+`dwarven-coop.lua` has no `CONFIG` table at all. The companion app that
+replaces its workflow hardcodes the Claude model (`claude-opus-5`, fixed per
+the project spec — not configurable via environment variable). Its
+operational settings — `effort` (`CLAUDE_EFFORT`), polling interval
+(`POLL_INTERVAL_MS`), ports (`COMPANION_PORT`), DFHack connection
+(`DFHACK_HOST`/`DFHACK_PORT`/`DFHACK_TIMEOUT`), data directory (`DATA_DIR`),
+and the API key (`ANTHROPIC_API_KEY`) — are controlled by environment
+variables; see `companion/.env.example` and [Companion App](#companion-app).
 
 ---
 
