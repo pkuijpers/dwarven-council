@@ -129,13 +129,20 @@ export class Poller {
     // Claim the guard synchronously, before any `await` -- see file header.
     this.cycleRunning = true;
     try {
-      const date = await this.fetchDate();
-      return await this.runCycleAndTrack(date);
-    } catch (err) {
-      this.setStatus({
-        lastError: err instanceof Error ? err.message : String(err),
-      });
-      throw err;
+      // Throws (with `connected: false` + `lastError` already recorded) if
+      // the date probe itself fails.
+      const date = await this.fetchDateAndUpdateStatus();
+      try {
+        return await this.runCycleAndTrack(date);
+      } catch (err) {
+        // The date probe succeeded -- DFHack is reachable -- so only the
+        // cycle itself failed (e.g. a `history.upsert()` infra error).
+        // Record the error without touching `connected`.
+        this.setStatus({
+          lastError: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
     } finally {
       this.cycleRunning = false;
     }
@@ -180,21 +187,10 @@ export class Poller {
   private async poll(): Promise<void> {
     let date: GameDate;
     try {
-      date = await this.fetchDate();
-    } catch (err) {
-      this.setStatus({
-        connected: false,
-        lastError: err instanceof Error ? err.message : String(err),
-      });
+      date = await this.fetchDateAndUpdateStatus();
+    } catch {
       return;
     }
-
-    this.setStatus({
-      connected: true,
-      fortressLoaded: date.fortressMode && date.mapLoaded,
-      date,
-      lastError: undefined,
-    });
 
     const cycles = await this.deps.history.load();
     if (!shouldTriggerCycle(date, cycles)) {
@@ -211,6 +207,36 @@ export class Poller {
       throw new Error(result.error ?? 'Date probe failed with no error message');
     }
     return parseDateProbe(result.output);
+  }
+
+  /**
+   * Fetches the current in-game date and updates `connected`/
+   * `fortressLoaded`/`date`/`lastError` to match -- shared by `poll()` and
+   * `triggerNow()` so both keep the connection-status fields in sync
+   * identically. (The two used to update this independently, and drifted:
+   * `triggerNow()` never touched `connected`/`fortressLoaded`/`date` on
+   * success, so a manual trigger could complete while the UI kept showing
+   * "Disconnected" until the next automatic tick.) On failure, records
+   * `connected: false` + the error message, then rethrows.
+   */
+  private async fetchDateAndUpdateStatus(): Promise<GameDate> {
+    let date: GameDate;
+    try {
+      date = await this.fetchDate();
+    } catch (err) {
+      this.setStatus({
+        connected: false,
+        lastError: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+    this.setStatus({
+      connected: true,
+      fortressLoaded: date.fortressMode && date.mapLoaded,
+      date,
+      lastError: undefined,
+    });
+    return date;
   }
 
   /**

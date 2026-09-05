@@ -495,6 +495,64 @@ describe('Poller', () => {
     expect(poller.getStatus().cycleRunning).toBe(false);
   });
 
+  it('17. [Bug fix] a successful triggerNow() updates connected/fortressLoaded/date, not just lastCycleId', async () => {
+    // Before the fix, only the automatic tick's poll() updated the
+    // connection-status fields on a successful date fetch -- triggerNow()
+    // only ever touched lastCycleId/lastError, leaving connected/
+    // fortressLoaded/date stuck at whatever they were before (the
+    // constructor's `false` defaults, if this was the very first
+    // successful action against a freshly-started poller).
+    const { deps } = makeDeps();
+    const poller = new Poller(deps, CONFIG);
+
+    expect(poller.getStatus().connected).toBe(false);
+
+    await poller.triggerNow();
+
+    const status = poller.getStatus();
+    expect(status.connected).toBe(true);
+    expect(status.fortressLoaded).toBe(true);
+    expect(status.date).toEqual({
+      year: 106,
+      tick: SPRING_TICK,
+      seasonIndex: 0,
+      seasonName: 'Spring',
+      fortressMode: true,
+      mapLoaded: true,
+    });
+  });
+
+  it('18. [Bug fix] triggerNow() reports disconnected when the date probe itself fails', async () => {
+    const { deps } = makeDeps({
+      runCommand: vi.fn(async () => ({ success: false, output: '', error: 'ECONNREFUSED' })),
+    });
+    const poller = new Poller(deps, CONFIG);
+
+    await expect(poller.triggerNow()).rejects.toThrow(/ECONNREFUSED/);
+
+    const status = poller.getStatus();
+    expect(status.connected).toBe(false);
+    expect(status.lastError).toMatch(/ECONNREFUSED/);
+  });
+
+  it('19. [Bug fix] a runCycle infra failure after a successful date fetch does not falsely report disconnected', async () => {
+    // The date probe succeeds (DFHack IS reachable) but the cycle itself
+    // hits an infra error (e.g. history.upsert() failing to write to disk).
+    // `connected` must stay `true` -- only `lastError` should reflect the
+    // cycle failure, mirroring how the automatic tick path (poll() +
+    // tick()'s catch) already keeps these concerns separate.
+    const { deps } = makeDeps();
+    vi.spyOn(deps.history, 'upsert').mockRejectedValue(new Error('disk full'));
+    const poller = new Poller(deps, CONFIG);
+
+    await expect(poller.triggerNow()).rejects.toThrow(/disk full/);
+
+    const status = poller.getStatus();
+    expect(status.connected).toBe(true);
+    expect(status.fortressLoaded).toBe(true);
+    expect(status.lastError).toMatch(/disk full/);
+  });
+
   it('12. onChange returns an unsubscribe function', async () => {
     const { deps } = makeDeps({
       runCommand: vi.fn(async () => {
