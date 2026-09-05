@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "workspaces": ["shared/*", "mcp-server", "companion"],
+  "scripts": {
+    "build": "tsc -b shared/dfhack-client mcp-server companion",
+    "test": "npm test -w companion"
+  }
+}

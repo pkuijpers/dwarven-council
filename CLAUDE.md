@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Dwarven Governance is a set of DFHack Lua addons for Dwarf Fortress that generate OKRs (Objectives and Key Results) through AI-powered governance simulations. Three scripts implement different governance systems: democratic cooperative, authoritarian regime, and corporate enterprise.
 
-All scripts run entirely within DFHack using Lua and make LLM API calls via `curl` subprocess to Claude.
+All three scripts run entirely within DFHack using Lua. `dwarven-reich.lua` and `dwarven-corp.lua` never call an LLM themselves — they print a prompt for you to paste into an LLM interface by hand (both have a `CONFIG.api_key` field, but it's dead code: nothing reads it or makes an HTTP call). `dwarven-coop.lua` is different: its `assembly` command exports fortress state as JSON rather than printing a prompt, and a separate Node.js/TypeScript service — the companion app in `companion/` — polls for season changes, runs `assembly`, and calls the Claude API directly via the Anthropic SDK (no `curl`, no subprocess).
 
 ## Commands
 
@@ -93,7 +93,35 @@ mcp__dfhack__dfhack_command with command: "help" args: ["dwarven-coop"]
 **Prerequisites:**
 - Dwarf Fortress must be running with a fortress loaded
 - DFHack remote server runs automatically on port 5000
-- MCP server must be built: `cd mcp-server && npm install && npm run build`
+- MCP server must be built: from the repo root, `npm install` (once, for the whole npm workspace), then `npm run build` (builds `shared/dfhack-client`, `mcp-server`, and `companion`) — or `npm run build -w mcp-server` to build just the MCP server
+
+### Companion App (Cooperative Only)
+
+`companion/` is a separate Node.js/TypeScript service that automates the
+`dwarven-coop` OKR workflow: it polls DFHack for the in-game season, runs
+`dwarven-coop assembly` when a new quarter starts, calls the Claude API
+directly (Anthropic SDK), and serves the result plus history over a web UI
+(SSE-updated). It replaces `dwarven-coop`'s copy-paste-into-an-LLM workflow.
+
+**`dwarven-reich.lua` and `dwarven-corp.lua` are unaffected** — they still
+use the original manual workflow (print a prompt, paste it into an LLM
+yourself); there is no reich/corp equivalent of the companion app.
+
+To run it:
+```bash
+cd companion
+npm install       # or rely on the root workspace install above
+cp .env.example .env   # fill in ANTHROPIC_API_KEY; other vars have defaults
+npm run build && npm start
+# or during development:
+npm run dev
+```
+
+Key env vars (`companion/.env.example`): `ANTHROPIC_API_KEY` (required),
+`DFHACK_HOST`/`DFHACK_PORT`, `COMPANION_PORT`, `POLL_INTERVAL_MS`,
+`CLAUDE_EFFORT`, `DATA_DIR` (where `history.json` is written). Tests:
+`npm test -w companion` from the repo root. See `companion/README.md` for
+the full HTTP API and data format.
 
 **Connection handling:** `DFHackClient.connect()` (`mcp-server/src/dfhack-client.ts`) always force-disconnects and opens a brand-new socket before each connection rather than reusing one — this was a deliberate fix for stale-connection bugs (see commit `3b86aab`). Don't "optimize" this into a persistent/pooled connection without re-verifying that issue is actually gone.
 
@@ -130,24 +158,30 @@ All located in the Dwarf Fortress installation directory.
 
 ### Shared Script Pattern
 
-All three scripts follow the same architectural pattern:
+All three scripts follow the same architectural pattern, though `dwarven-coop.lua` has diverged on points 3 and 7:
 
 1. **Utility Functions** - `safe_get()`, `plural()`, `pct()`, `status_indicator()` for error handling and formatting
 2. **DFHack API Helpers** - `translate_name()`, `is_military()`, `get_fortress_info()`, `get_buildings_summary()` with compatibility for old/new DFHack APIs
-3. **Configuration** (`CONFIG` table) - API key, model, output directory
+3. **Configuration** (`CONFIG` table) - API key, model, output directory. Present in `dwarven-reich.lua`/`dwarven-corp.lua` (with `api_key`/`model`/`api_url` fields that are dead code — nothing reads them). `dwarven-coop.lua` has no `CONFIG` table at all.
 4. **Governance Structure** - Faction/council/C-suite definitions with profession mappings (governance-specific)
 5. **State Collection** - Extract game data via DFHack API
 6. **Report Generation** - Create markdown briefings from game state
-7. **Prompt Generation** - Build system and user prompts, then print combined prompt for manual copy/paste to LLM
+7. **Prompt Generation** - `dwarven-reich.lua`/`dwarven-corp.lua` build system and user prompts and print the combined prompt for manual copy/paste to an LLM (`build_system_prompt()`, `build_user_prompt()`, `print_llm_prompt()`). `dwarven-coop.lua` has none of these functions; its `cmd_assembly()` instead JSON-encodes state and briefing for the companion app (`companion/src/prompt.ts` builds the prompt on that side).
 8. **Command Handlers** - Functions like `cmd_assembly()`, `cmd_decree()`, `cmd_qbr()`
 9. **Entry Point** - Argument parsing with `argparse.processArgsGetopt()`
 
 ### State Collection Pipeline
 
-Each script follows this data flow:
+`dwarven-reich.lua` and `dwarven-corp.lua` still follow the original, fully manual flow:
 
 ```
-DFHack Memory → collect_state() → Briefing/Report → LLM Prompt → Claude API → OKRs
+DFHack Memory → collect_state() → Briefing/Report → LLM Prompt (printed) → manual copy/paste → Claude → OKRs (pasted back manually)
+```
+
+`dwarven-coop.lua` no longer prints an LLM prompt at all. Its `assembly` command exports state as JSON, and the companion app (`companion/`, Node.js/TypeScript) does the prompt-building and the actual Claude API call:
+
+```
+DFHack Memory → collect_state() → JSON export (assembly) → companion app (prompt building, TypeScript) → Claude API (Anthropic SDK) → OKRs → companion/data/history.json + web UI
 ```
 
 **The three scripts have diverged** — `dwarven-coop.lua` is the most actively developed and its `collect_state()` collects significantly more than `dwarven-reich.lua` / `dwarven-corp.lua`. Don't assume feature parity between the scripts; check each file's own `collect_state()` before assuming a helper exists elsewhere.
@@ -184,26 +218,34 @@ All use the same profession categorization logic but different narrative framing
 
 ### LLM Integration
 
-The `print_llm_prompt()` function in each script:
+**`dwarven-reich.lua` / `dwarven-corp.lua` — manual, unchanged.** The `print_llm_prompt()` function in each script:
 
 1. Combines system and user prompts into a single text block
 2. Prints the combined prompt to stdout
 3. User can then copy/paste this prompt into any LLM interface (Claude.ai, API playground, etc.)
 
 **Workflow:**
-1. Run command (e.g., `dwarven-coop assembly`)
-2. Script gathers fortress state and generates briefing
-3. Script builds system and user prompts
+1. Run command (e.g., `dwarven-reich decree`)
+2. Script gathers fortress state and generates a report
+3. Script builds system and user prompts (`build_system_prompt()`, `build_user_prompt()`)
 4. Script prints combined prompt to console
 5. User copies prompt and pastes it into their preferred LLM interface
 6. LLM generates OKRs based on current fortress state
 
+**`dwarven-coop.lua` — automated via the companion app.** `dwarven-coop.lua` has no `build_system_prompt()`/`build_user_prompt()`/`print_llm_prompt()`. Instead:
+
+1. The companion app (`companion/`) polls DFHack and detects a season change
+2. It runs `dwarven-coop assembly`, which prints `state` + `briefing` as a JSON payload (see `dwarven-coop.lua`'s `cmd_assembly()`)
+3. `companion/src/prompt.ts` (`buildSystemPrompt()`, `buildUserPrompt()` — ported from the Lua originals, verified byte-for-byte against a golden file) builds the prompt from that payload
+4. `companion/src/anthropic.ts` calls the Claude API directly via the Anthropic SDK
+5. The cycle (briefing, narrative, OKRs, success/failure) is recorded to `companion/data/history.json` and pushed to the web UI over SSE
+
 ### Prompt Architecture
 
-Two-stage prompt generation:
+Two-stage prompt generation, present in `dwarven-reich.lua`/`dwarven-corp.lua` as Lua functions and in the companion app as `companion/src/prompt.ts` (for coop):
 
-1. **System Prompt** (`build_system_prompt()`) - Sets governance context, personalities, and OKR format
-2. **User Prompt** (`build_user_prompt()`) - Contains briefing/report and assembly/meeting context
+1. **System Prompt** (`build_system_prompt()` / `buildSystemPrompt()`) - Sets governance context, personalities, and OKR format
+2. **User Prompt** (`build_user_prompt()` / `buildUserPrompt()`) - Contains briefing/report and assembly/meeting context
 
 System prompts define the narrative voice and OKR structure. User prompts provide current game state and constraints (available workforce, threats, resources).
 

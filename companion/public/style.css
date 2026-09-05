@@ -1,0 +1,200 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f5f2ec;
+  --fg: #2a2420;
+  --muted: #6b6156;
+  --card-bg: #ffffff;
+  --border: #ddd4c6;
+  --accent: #8a5a2b;
+  --ok: #2e7d32;
+  --warn: #b8860b;
+  --error: #b3261e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1a17;
+    --fg: #ece6dc;
+    --muted: #a99f92;
+    --card-bg: #262320;
+    --border: #3a352e;
+    --accent: #d7a25f;
+    --ok: #7ed08a;
+    --warn: #e0b84b;
+    --error: #ff6f63;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+}
+
+.status-bar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+}
+
+.status-pill {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.status-pill--connected {
+  background: color-mix(in srgb, var(--ok) 20%, transparent);
+  color: var(--ok);
+}
+
+.status-pill--disconnected {
+  background: color-mix(in srgb, var(--error) 20%, transparent);
+  color: var(--error);
+}
+
+.status-pill--unknown {
+  background: color-mix(in srgb, var(--muted) 20%, transparent);
+  color: var(--muted);
+}
+
+.status-item {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.status-item--error {
+  color: var(--error);
+}
+
+.trigger-button {
+  margin-left: auto;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.trigger-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.trigger-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.assembly-list {
+  max-width: 900px;
+  margin: 1.5rem auto;
+  padding: 0 1rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.assembly-list__empty {
+  color: var(--muted);
+  text-align: center;
+  margin-top: 3rem;
+}
+
+.assembly-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+}
+
+.assembly-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.assembly-card__title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.assembly-card__status {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+}
+
+.assembly-card__status--completed {
+  background: color-mix(in srgb, var(--ok) 20%, transparent);
+  color: var(--ok);
+}
+
+.assembly-card__status--failed {
+  background: color-mix(in srgb, var(--error) 20%, transparent);
+  color: var(--error);
+}
+
+.assembly-card__timestamp {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.assembly-card__error {
+  color: var(--error);
+  font-size: 0.9rem;
+}
+
+.assembly-card details {
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+}
+
+.assembly-card summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: 0.8rem 0 0.4rem;
+}
+
+.markdown p {
+  margin: 0.4rem 0;
+}
+
+.markdown ul {
+  margin: 0.3rem 0;
+  padding-left: 1.4rem;
+}
+
+.markdown hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.8rem 0;
+}

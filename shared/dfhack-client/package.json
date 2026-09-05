@@ -1,0 +1,16 @@
+{
+  "name": "@dwarvencouncil/dfhack-client",
+  "version": "1.0.0",
+  "description": "DFHack remote-control wire protocol client shared between mcp-server and companion",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

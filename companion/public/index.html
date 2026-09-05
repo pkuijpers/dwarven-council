@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dwarven Companion</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header id="status-bar" class="status-bar">
+      <span id="status-connection" class="status-pill status-pill--unknown">Connecting&hellip;</span>
+      <span id="status-date" class="status-item">Date: &mdash;</span>
+      <span id="status-next-season" class="status-item">Next season: &mdash;</span>
+      <span id="status-cycle" class="status-item" hidden>Assembly in progress&hellip;</span>
+      <span id="status-error" class="status-item status-item--error" hidden></span>
+      <button id="trigger-now" class="trigger-button" type="button">Trigger assembly now</button>
+    </header>
+
+    <main id="assembly-list" class="assembly-list">
+      <p id="assembly-list-empty" class="assembly-list__empty">No assemblies recorded yet.</p>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

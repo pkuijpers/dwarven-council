@@ -3,7 +3,7 @@
 -- Place in: <DF>/hack/scripts/
 --
 -- Usage:
---   dwarven-coop assembly   - Hold the General Assembly (generates OKRs)
+--   dwarven-coop assembly   - Export current fortress state as JSON (for the companion app)
 --   dwarven-coop briefing   - Show current fortress status
 --   dwarven-coop status     - Quick status check
 --   dwarven-coop members    - Show voting members by faction
@@ -13,6 +13,7 @@
 
 local argparse = require('argparse')
 local utils = require('utils')
+local json = require('json')
 
 -- ============================================================
 -- Utility Functions
@@ -136,12 +137,6 @@ local function get_buildings_summary()
     return counts
 end
 
-local function print_llm_prompt(system_prompt, user_prompt)
-    -- Combine system and user prompts for standard chat UIs
-    local combined_prompt = system_prompt .. "\n\n" .. user_prompt
-    print(combined_prompt)
-end
-
 -- ============================================================
 -- Factions within the Cooperative
 -- ============================================================
@@ -151,8 +146,6 @@ local FACTIONS = {
     {
         id = "producers",
         name = "Producers Collective",
-        description = "Craftsdwarves, smiths, and makers",
-        priorities = {"workshop efficiency", "masterwork creation", "tool quality"},
         professions = {
             "CRAFTSMAN", "WOODWORKER", "STONEWORKER", "RANGER",
             "METALSMITH", "JEWELER", "CRAFTSDWARF", "MASON",
@@ -164,8 +157,6 @@ local FACTIONS = {
     {
         id = "food",
         name = "Food Council",
-        description = "Farmers, cooks, and brewers",
-        priorities = {"food security", "alcohol production", "sustainable farming"},
         professions = {
             "FARMER", "COOK", "BREWER", "BUTCHER", "TANNER",
             "CHEESE_MAKER", "MILKER", "HERBALIST", "THRESHER",
@@ -175,8 +166,6 @@ local FACTIONS = {
     {
         id = "delvers",
         name = "Delvers Guild",
-        description = "Miners and earthworkers",
-        priorities = {"expansion", "ore discovery", "safe mining", "megaprojects"},
         professions = {
             "MINER", "ENGRAVER", "MECHANIC", "ENGINEER",
             "PUMP_OPERATOR", "GELDER"
@@ -185,8 +174,6 @@ local FACTIONS = {
     {
         id = "defenders",
         name = "Defenders Union",
-        description = "Military and guards",
-        priorities = {"fortress defense", "military training", "equipment quality"},
         professions = {
             "WRESTLER", "AXE", "SWORD", "MACE", "HAMMER",
             "SPEAR", "CROSSBOW", "SHIELD", "ARMOR", "WEAPONUSER",
@@ -196,8 +183,6 @@ local FACTIONS = {
     {
         id = "caregivers",
         name = "Care Collective",
-        description = "Medics and welfare workers",
-        priorities = {"healthcare", "mental wellness", "injury prevention", "quality of life"},
         professions = {
             "DOCTOR", "DIAGNOSER", "BONE_SETTER", "SURGEON",
             "SUTURER", "CHIEF_MEDICAL_DWARF", "ANIMAL_CARETAKER"
@@ -206,8 +191,6 @@ local FACTIONS = {
     {
         id = "services",
         name = "Services Sector",
-        description = "Traders, administrators, and others",
-        priorities = {"trade relations", "efficient management", "diplomacy"},
         professions = {
             "TRADER", "BROKER", "CLERK", "ADMINISTRATOR",
             "MANAGER", "BOOKKEEPER", "HAULER", "PEASANT"
@@ -1980,118 +1963,6 @@ local function generate_briefing(state)
 end
 
 -- ============================================================
--- LLM Integration
--- ============================================================
-
-local function build_system_prompt(state)
-    local pop = state.population
-    
-    -- Build faction information
-    local faction_lines = {}
-    for _, faction in ipairs(FACTIONS) do
-        local data = pop.factions[faction.id]
-        if data and data.members > 0 then
-            table.insert(faction_lines, string.format(
-                "- **%s** (%d votes, %s): %s. Priorities: %s",
-                faction.name,
-                data.members,
-                pct(data.members, pop.eligible_voters),
-                faction.description,
-                table.concat(faction.priorities, ", ")
-            ))
-        end
-    end
-    
-    return [[You are simulating the General Assembly of a Dwarven Cooperative in Dwarf Fortress.
-
-## Organizational Structure
-The dwarves have organized themselves as a cooperative. Key principles:
-- **Democratic:** Every adult dwarf has 1 vote
-- **Collective ownership:** All resources are common property
-- **Solidarity:** Decisions are made in the interest of all members
-
-## Voting Factions
-]] .. table.concat(faction_lines, "\n") .. [[
-
-## Assembly Procedure
-1. Opening by the chairperson (elected from the largest faction)
-2. Establishment of quorum (50%+1 of eligible voters)
-3. Discussion of agenda items - factions submit proposals
-4. Debate between factions (show different perspectives)
-5. Voting on OKRs (show vote distributions)
-6. Adoption of final OKRs
-
-## Output Format
-
-### [OPENING] Opening Assembly
-[Brief opening, establishment of quorum]
-
-### [POSITIONS] Faction Positions
-[Each relevant faction briefly presents their priorities]
-
-### [DEBATE] Debate
-[Brief debate between factions - disagreements and compromises]
-
-### [VOTING] Voting
-
-#### Motion 1: [Objective title]
-Submitted by: [Faction]
-- KR1: [Measurable key result]
-- KR2: [Measurable key result]  
-- KR3: [Measurable key result]
-
-**Vote Result:**
-- For: [X] votes ([factions])
-- Against: [Y] votes ([factions])
-- Abstain: [Z] votes
-- [PASS] ADOPTED / [FAIL] REJECTED
-
-[Repeat for each motion - usually 3-4 motions]
-
-### [NOTE] Minutes
-[Brief summary and advice for the player]
-
-## Guidelines
-- OKRs must be achievable within one season
-- Key Results are specific and measurable
-- Show realistic faction dynamics (sometimes conflict, sometimes consensus)
-- Larger factions have more influence but small factions can form coalitions
-- Address urgent concerns first
-- Balance short-term survival with long-term growth]]
-end
-
-local function build_user_prompt(state, briefing)
-    local pop = state.population
-    local available = pop.adults - pop.military - pop.injured
-    
-    local focus_areas = {}
-    local happiness = calculate_happiness(pop.stress)
-    
-    if happiness < 50 then table.insert(focus_areas, "Morale improvement") end
-    if state.resources.food.status == "low" or state.resources.food.status == "critical" then
-        table.insert(focus_areas, "Food production")
-    end
-    if state.resources.drink.status == "low" or state.resources.drink.status == "critical" then
-        table.insert(focus_areas, "Alcohol production")
-    end
-    if pop.military < (pop.total / 10) then
-        table.insert(focus_areas, "Collective defense")
-    end
-    table.insert(focus_areas, "Wealth building")
-    table.insert(focus_areas, "Infrastructure")
-    
-    local prompt = "# General Assembly - Quarterly Meeting\n\n"
-    prompt = prompt .. briefing .. "\n\n"
-    prompt = prompt .. "## Assembly Context\n"
-    prompt = prompt .. "Available workforce: " .. available .. " dwarves\n"
-    prompt = prompt .. "Quorum: " .. (math.floor(pop.eligible_voters / 2) + 1) .. " votes\n"
-    prompt = prompt .. "Suggested focus areas: " .. table.concat(focus_areas, ", ") .. "\n\n"
-    prompt = prompt .. "Conduct the General Assembly and produce the OKRs for the coming quarter through democratic voting."
-    
-    return prompt
-end
-
--- ============================================================
 -- Commands
 -- ============================================================
 
@@ -2147,19 +2018,19 @@ local function cmd_members()
 end
 
 local function cmd_assembly()
-    print("+============================================================+")
-    print("|       DWARVEN COOPERATIVE - GENERAL ASSEMBLY               |")
-    print("|                   Quarterly Meeting                        |")
-    print("+============================================================+")
-    print("")
-    
     local state = collect_state()
     local briefing = generate_briefing(state)
-    local system_prompt = build_system_prompt(state)
-    local user_prompt = build_user_prompt(state, briefing)
 
-    -- Print the prompt for manual copy/paste to LLM
-    print_llm_prompt(system_prompt, user_prompt)
+    -- df.unit userdata cannot be JSON-encoded and nothing downstream needs it
+    for _, faction in pairs(state.population.factions) do
+        faction.dwarves = nil
+    end
+
+    local payload = json.encode({ schema = 1, state = state, briefing = briefing }, { pretty = false })
+    print("===DWARVEN_ASSEMBLY_STATE_JSON===")
+    print(#payload)
+    print(payload)
+    print("===DWARVEN_ASSEMBLY_STATE_END===")
 end
 
 -- ============================================================

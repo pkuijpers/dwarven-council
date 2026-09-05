@@ -1,0 +1,168 @@
+You are simulating the General Assembly of a Dwarven Cooperative in Dwarf Fortress.
+
+## Organizational Structure
+The dwarves have organized themselves as a cooperative. Key principles:
+- **Democratic:** Every adult dwarf has 1 vote
+- **Collective ownership:** All resources are common property
+- **Solidarity:** Decisions are made in the interest of all members
+
+## Voting Factions
+- **Producers Collective** (9 votes, 22%): Craftsdwarves, smiths, and makers. Priorities: workshop efficiency, masterwork creation, tool quality
+- **Food Council** (7 votes, 17%): Farmers, cooks, and brewers. Priorities: food security, alcohol production, sustainable farming
+- **Delvers Guild** (3 votes, 7%): Miners and earthworkers. Priorities: expansion, ore discovery, safe mining, megaprojects
+- **Defenders Union** (1 votes, 2%): Military and guards. Priorities: fortress defense, military training, equipment quality
+- **Care Collective** (1 votes, 2%): Medics and welfare workers. Priorities: healthcare, mental wellness, injury prevention, quality of life
+- **Services Sector** (19 votes, 47%): Traders, administrators, and others. Priorities: trade relations, efficient management, diplomacy
+## Assembly Procedure
+1. Opening by the chairperson (elected from the largest faction)
+2. Establishment of quorum (50%+1 of eligible voters)
+3. Discussion of agenda items - factions submit proposals
+4. Debate between factions (show different perspectives)
+5. Voting on OKRs (show vote distributions)
+6. Adoption of final OKRs
+
+## Output Format
+
+### [OPENING] Opening Assembly
+[Brief opening, establishment of quorum]
+
+### [POSITIONS] Faction Positions
+[Each relevant faction briefly presents their priorities]
+
+### [DEBATE] Debate
+[Brief debate between factions - disagreements and compromises]
+
+### [VOTING] Voting
+
+#### Motion 1: [Objective title]
+Submitted by: [Faction]
+- KR1: [Measurable key result]
+- KR2: [Measurable key result]  
+- KR3: [Measurable key result]
+
+**Vote Result:**
+- For: [X] votes ([factions])
+- Against: [Y] votes ([factions])
+- Abstain: [Z] votes
+- [PASS] ADOPTED / [FAIL] REJECTED
+
+[Repeat for each motion - usually 3-4 motions]
+
+### [NOTE] Minutes
+[Brief summary and advice for the player]
+
+## Guidelines
+- OKRs must be achievable within one season
+- Key Results are specific and measurable
+- Show realistic faction dynamics (sometimes conflict, sometimes consensus)
+- Larger factions have more influence but small factions can form coalitions
+- Address urgent concerns first
+- Balance short-term survival with long-term growth
+
+# General Assembly - Quarterly Meeting
+
+# Dwarven Cooperative Bellspants
+## General Assembly - 17 Felsite, Year 106 (Spring)
+
+---
+
+## Assembly Quorum
+**Total members:** 51 dwarves
+**Eligible voters:** 40 adults (children: 11)
+**Quorum:** 21 votes required for decision (50%+1)
+
+## Faction Distribution & Spokespersons
+  #########----------- Services Sector: 19 votes (47%)
+    Spokesperson: Urist Adagcatten, BONE_CARVER (high bravery, high excitement seeking)
+  ####---------------- Producers Collective: 9 votes (22%)
+    Spokesperson: Zon Astcatten, BLACKSMITH (low cheer propensity, high anxiety propensity, low perseverance)
+  ###----------------- Food Council: 7 votes (17%)
+    Spokesperson: Tosid Athelisram, MILLER (high hate propensity, low anxiety propensity, high violent)
+  #------------------- Delvers Guild: 3 votes (7%)
+    Spokesperson: Urvad Edosducim, MINER (high disdain advice, high immodesty, low singleminded)
+  -------------------- Care Collective: 1 votes (2%)
+    Spokesperson: Tobul Eribmokez, DOCTOR (high curious, high swayed by emotions, low abstract inclined)
+  -------------------- Defenders Union: 1 votes (2%)
+    Spokesperson: Stinth�d �nulnoram, HUNTER (high privacy, low orderliness, low trust)
+
+## Cooperative Status
+**Workforce:** 35 active, 5 in militia, 0 injured
+**Morale:** 67% satisfaction
+  - Positive mood: 13 members (25%)
+  - Neutral: 38 members (74%)
+  - Negative mood: 0 members (0%)
+
+## Common Resources
+**Food:** ++ abundant (1105 units, ~910 days supply)
+  - meat: 219, fish: 105, other: 1, eggs: 65, plants: 262, prepared_meals: 453
+**Drink:** ! low (237 units, ~78 days supply)
+  - dwarven beer: 6, dwarven wine: 175, dwarven rum: 30, dwarven ale: 26
+**Accumulated wealth:** 129015 ☐ (total value of fortress assets)
+**Fortress-made trade goods:** 1 fine craft (est. value: 23 ☼)
+
+## Mining Inventory
+**Stone Boulders:** 1 magnetite, 1 tetrahedrite, 17 bituminous coal, 2 jet, 2 limonite, 201 chert, 27 microcline, 9 claystone, 9 lignite
+**Metal Bars:** 1 platinum, 13 ash, 2 chicken soap, 23 coal, 26 wild boar soap, 359 iron, 48 emu soap, 7 copper, 8 silver
+**Gems:** none
+**Blocks:** 11 chert, 12 limestone, 16 claystone
+**Unmined Ore Veins (top 10):** magnetite (~71), tetrahedrite (~46), hematite (~42), limonite (~10), malachite (~4), native platinum (~3)
+**Unmined Gem Deposits (top 10):** turquoise (~4), chrysoprase (~4), onyx (~1)
+
+## Collective Defense
+**Militia:** minimal (5 members, 9% of cooperative)
+  - **Nitem Olin**: 3 members
+    - Urist Adagcatten
+      Equipment: Armor: 1 pieces
+      Skills: Fighting: Expert, Dodging: Skilled
+    - Reg �m�zineth
+      Equipment: Weapon: steel battle axe, Armor: 2 pieces
+      Skills: Spear: Talented, Fighting: Professional, Dodging: Skilled
+    - Thob Rabdastot
+      Equipment: Weapon: copper battle axe, Armor: 1 pieces
+      Skills: Spear: Expert, Fighting: Professional, Dodging: Skilled
+  - **Ongetsibrek**: 2 members
+    - Stinth�d �nulnoram
+      Equipment: Weapon: iron crossbow, Armor: 1 pieces
+      Skills: Crossbow: Competent, Fighting: Dabbling, Dodging: Novice
+    - Udib Bomrekosram
+      Equipment: Weapon: iron crossbow, Armor: 1 pieces
+      Skills: Crossbow: Adequate, Fighting: Dabbling, Dodging: Novice
+
+**Defensive Structures:**
+  - Bridges: 1
+
+## Common Infrastructure
+**Production:** 17 workshops, 2 furnaces
+  - Workshops: Jewelers: 1, Mechanics: 1, Still: 2, Kitchen: 1, Ashery: 1, Carpenters: 1, Farmers: 1, Masons: 1, Loom: 1, Custom: 1, Butchers: 1, Fishery: 1, MetalsmithsForge: 2, Craftsdwarfs: 2
+  - Furnaces: Smelter: 1, WoodFurnace: 1
+**Housing:** 28 beds, 15 tables, 19 chairs
+**Zones:** 24 bedrooms, 1 dining halls, 2 meeting areas, 1 barracks, 1 animal pens
+**Hospital:** Ustuthzoden
+  - Shortages: powder: 0/750, buckets: 1/2
+**Offices:** `Gunnhild Stonefist' Lolokzasit (expedition leader, manager, broker); `Welogan' Zunt�rbebmal (bookkeeper)
+
+## Fortress Chronicle
+
+**Notable Events:**
+  - [Year 106] Tobul Eribmokez created "Doubts About Anesthesia" (�Doubts About Anesthesia (moonstone-bound codex)�)
+  - [Year 106] `Dogwood' Isethducim created "Velvetsick the Random Leopard" (�microcline figurine of Udib Whipfortunes�)
+  - [Year 106] Tobul Eribmokez created "Anesthesia: Problems And Solutions" (�Anesthesia: Problems And Solutions (sunstone-bound codex)�)
+
+**Recent Activity:**
+  - [1 Granite, Year 106] Urvad Shemsefol joined the fortress
+  - [1 Granite, Year 106] Zon Astcatten joined the fortress
+  - [1 Granite, Year 106] Medtob Asteshoddom joined the fortress
+  - [1 Granite, Year 106] Sarvesh Th�kutkathil joined the fortress
+  - [1 Granite, Year 106] As�n D�grakust joined the fortress
+  - [1 Granite, Year 106] Shorast Kikrost�s joined the fortress
+  - [1 Granite, Year 106] Moldath Asteshn�ton joined the fortress
+  - [1 Granite, Year 106] Tosid Athelisram joined the fortress
+  - [1 Granite, Year 106] Udib Dalkamdod�k joined the fortress
+  - [1 Granite, Year 106] Reg Likotthukkan joined the fortress
+
+## Assembly Context
+Available workforce: 35 dwarves
+Quorum: 21 votes
+Suggested focus areas: Alcohol production, Collective defense, Wealth building, Infrastructure
+
+Conduct the General Assembly and produce the OKRs for the coming quarter through democratic voting.
