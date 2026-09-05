@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { AddressInfo } from 'node:net';
+import type { AddressInfo, Socket } from 'node:net';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
@@ -112,6 +112,7 @@ let fakePoller: FakePoller;
 let fakeHistory: FakeHistoryStore;
 let server: Server;
 let baseUrl: string;
+let openSockets: Set<Socket>;
 
 async function startServer(): Promise<void> {
   server = createServer({
@@ -119,12 +120,26 @@ async function startServer(): Promise<void> {
     history: fakeHistory as unknown as HistoryStore,
     publicDir: pathToFileURL(publicDirPath + sep),
   });
+  // Track raw sockets so `stopServer()` can force-close a lingering one
+  // (e.g. an aborted SSE fetch) instead of waiting out Node's default
+  // ~5s keep-alive/socket teardown, which otherwise makes `server.close()`
+  // hang well past the point the abort has already been fully handled
+  // (listener cleanup itself happens within milliseconds -- verified
+  // separately; this is purely a test-teardown speed concern).
+  openSockets = new Set();
+  server.on('connection', (socket) => {
+    openSockets.add(socket);
+    socket.on('close', () => openSockets.delete(socket));
+  });
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const { port } = server.address() as AddressInfo;
   baseUrl = `http://localhost:${port}`;
 }
 
 async function stopServer(): Promise<void> {
+  for (const socket of openSockets) {
+    socket.destroy();
+  }
   await new Promise<void>((resolve, reject) => {
     server.close((err) => (err ? reject(err) : resolve()));
   });
