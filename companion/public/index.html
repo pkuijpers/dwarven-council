@@ -8,6 +8,7 @@
   </head>
   <body>
     <header id="status-bar" class="status-bar">
+      <span class="brand">&#9935; Dwarven Council</span>
       <span id="status-connection" class="status-pill status-pill--unknown">Connecting&hellip;</span>
       <span id="status-date" class="status-item">Date: &mdash;</span>
       <span id="status-next-season" class="status-item">Next season: &mdash;</span>
@@ -16,8 +17,20 @@
       <button id="trigger-now" class="trigger-button" type="button">Trigger assembly now</button>
     </header>
 
-    <main id="assembly-list" class="assembly-list">
-      <p id="assembly-list-empty" class="assembly-list__empty">No assemblies recorded yet.</p>
+    <nav class="tabs" role="tablist">
+      <button id="tab-current" class="tab tab--active" type="button" role="tab" aria-selected="true" data-tab="current">Current</button>
+      <button id="tab-history" class="tab" type="button" role="tab" aria-selected="false" data-tab="history">History</button>
+    </nav>
+
+    <main class="page">
+      <section id="pane-current" class="pane pane--active" role="tabpanel">
+        <p id="current-empty" class="empty-state">No assemblies recorded yet.</p>
+      </section>
+
+      <section id="pane-history" class="pane" role="tabpanel">
+        <p id="history-empty" class="empty-state">No assemblies recorded yet.</p>
+        <div id="history-list" class="history-list"></div>
+      </section>
     </main>
 
     <script src="/app.js"></script>
