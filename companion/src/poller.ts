@@ -10,6 +10,22 @@
 // arrive while a cycle is already running are simply no-ops, guarded by
 // `cycleRunning`, so cycles themselves never stack/overlap. The timer is
 // `.unref()`'d so it never keeps the process (or a test) alive on its own.
+//
+// The private `cycleRunning` field is a concurrency guard, distinct from the
+// public `status.cycleRunning` reported by `getStatus()`/`onChange()` (which
+// only reflects whether `runCycle()` itself is actively in flight -- see
+// `runCycleAndTrack()`). The guard is claimed SYNCHRONOUSLY -- in the same
+// turn of the event loop as the check that precedes it, before any `await`
+// -- by both entry points that can start work (`tick()` and `triggerNow()`).
+// This is deliberate: checking the flag and then only setting it to `true`
+// after an `await` (e.g. after the date-probe round-trip) leaves a window
+// where two calls issued close together both observe `false` and both
+// proceed concurrently. Since JS is single-threaded, a synchronous
+// check-and-set with no `await` in between is atomic -- a second caller
+// arriving at any point after the first's synchronous prefix has run will
+// see the flag already `true`. Both call sites reset the guard in a
+// `finally`, once their whole operation (date fetch + trigger decision +
+// `runCycle` if applicable) completes, regardless of success or failure.
 
 import type { CompanionConfig } from './config.js';
 import { runCycle, type CycleDeps } from './cycle.js';
@@ -95,13 +111,34 @@ export class Poller {
    * the `MAX_CYCLE_ATTEMPTS` cap) entirely -- this is the manual escape
    * hatch. Still respects the `cycleRunning` guard: it refuses to start a
    * second cycle on top of one already in flight.
+   *
+   * The guard check and flag flip happen synchronously, before the first
+   * `await` (see file header) -- so a second `triggerNow()` call issued
+   * before this one's date probe resolves, or a timer-driven tick racing
+   * this call, is guaranteed to see `cycleRunning === true` and reject
+   * immediately rather than run concurrently.
+   *
+   * Unlike the automatic tick path, a failure here REJECTS the returned
+   * promise -- the caller (e.g. a future HTTP endpoint) explicitly asked for
+   * this cycle and needs to know it failed.
    */
   async triggerNow(): Promise<Cycle> {
     if (this.cycleRunning) {
       throw new Error('A cycle is already running');
     }
-    const date = await this.fetchDate();
-    return this.runCycleAndTrack(date);
+    // Claim the guard synchronously, before any `await` -- see file header.
+    this.cycleRunning = true;
+    try {
+      const date = await this.fetchDate();
+      return await this.runCycleAndTrack(date);
+    } catch (err) {
+      this.setStatus({
+        lastError: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    } finally {
+      this.cycleRunning = false;
+    }
   }
 
   private scheduleNextTick(): void {
@@ -119,8 +156,25 @@ export class Poller {
     if (this.cycleRunning) {
       return;
     }
-
-    await this.poll();
+    // Claim the guard synchronously, before any `await` -- see file header.
+    this.cycleRunning = true;
+    try {
+      await this.poll();
+    } catch (err) {
+      // `poll()` itself only throws for genuine infra failures (e.g. a
+      // `history.upsert()` disk error propagating out of `runCycle` -- see
+      // cycle.ts's contract). On this automatic timer path there is no
+      // downstream caller to hand the rejection to, and letting it reach the
+      // bare `setTimeout` callback would become an unhandled rejection that
+      // can crash the process (Node 15+). Swallow it here, surfacing the
+      // failure the same way every other poll failure is surfaced
+      // (`lastError` + `onChange`), and let the next tick fire as normal.
+      this.setStatus({
+        lastError: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      this.cycleRunning = false;
+    }
   }
 
   private async poll(): Promise<void> {
@@ -159,13 +213,21 @@ export class Poller {
     return parseDateProbe(result.output);
   }
 
+  /**
+   * Runs a single cycle and records the outcome. Toggles the PUBLIC
+   * `status.cycleRunning` field (true only while `runCycle()` itself is
+   * actually in flight) -- distinct from the private `this.cycleRunning`
+   * concurrency guard, which both callers (`tick()` and `triggerNow()`)
+   * already claimed synchronously before calling this, and release in their
+   * own `finally` once their whole operation completes. A thrown error (e.g.
+   * `history.upsert()` failing) is left to propagate after resetting the
+   * public status -- each caller decides how to handle the rejection itself.
+   */
   private async runCycleAndTrack(date: GameDate): Promise<Cycle> {
-    this.cycleRunning = true;
     this.setStatus({ cycleRunning: true });
     try {
       const cycle = await runCycle(date, this.deps);
       this.setStatus({
-        cycleRunning: false,
         lastCycleId: cycle.id,
         lastError: cycle.status === 'failed' ? cycle.error : undefined,
       });
@@ -173,14 +235,8 @@ export class Poller {
         fn(cycle);
       }
       return cycle;
-    } catch (err) {
-      this.setStatus({
-        cycleRunning: false,
-        lastError: err instanceof Error ? err.message : String(err),
-      });
-      throw err;
     } finally {
-      this.cycleRunning = false;
+      this.setStatus({ cycleRunning: false });
     }
   }
 

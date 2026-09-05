@@ -377,6 +377,124 @@ describe('Poller', () => {
     poller.stop();
   });
 
+  it('13. [Critical regression] two back-to-back triggerNow() calls do not both run a cycle', async () => {
+    // Reproduces the reviewer's exact repro against the pre-fix code: the
+    // pre-fix `triggerNow()` only set `cycleRunning = true` *inside*
+    // `runCycleAndTrack`, i.e. after `await this.fetchDate()` had already
+    // resolved -- so two calls issued before that round-trip completed both
+    // read `cycleRunning === false` and both proceeded to call `runCycle`
+    // concurrently (dateCalls: 2, cycleCalls: 2, neither rejected). This
+    // test would have failed against that code. It now passes because the
+    // guard flag is claimed synchronously, before the first `await`, in the
+    // same turn of the event loop as the check -- so the second call always
+    // observes the flag already `true`.
+    vi.useRealTimers();
+    let dateCalls = 0;
+    let cycleCalls = 0;
+    const runCommand = vi.fn(async (cmd: string) => {
+      if (cmd === 'lua') {
+        dateCalls++;
+        // Simulate a real DFHack round-trip delay (matching the reviewer's
+        // 20ms repro) so the two calls' `await`s genuinely interleave.
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return { success: true, output: probeOutput(106, SPRING_TICK) };
+      }
+      cycleCalls++;
+      return { success: true, output: rawFixture };
+    });
+    const { deps } = makeDeps({ runCommand });
+    const poller = new Poller(deps, CONFIG);
+
+    const [r1, r2] = await Promise.allSettled([poller.triggerNow(), poller.triggerNow()]);
+
+    const fulfilled = [r1, r2].filter((r) => r.status === 'fulfilled');
+    const rejected = [r1, r2].filter((r) => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    if (rejected[0].status === 'rejected') {
+      expect(String(rejected[0].reason)).toMatch(/already running/i);
+    }
+    // Exactly one cycle ran to completion, not two concurrent ones.
+    expect(dateCalls).toBe(1);
+    expect(cycleCalls).toBe(1);
+  });
+
+  it('14. [Critical regression] a scheduled tick racing a manual triggerNow() call only lets one proceed', async () => {
+    // Same race, other direction: a timer-driven tick claims the guard
+    // synchronously the instant it fires (before its date probe resolves).
+    // A `triggerNow()` call issued while that probe is still in flight must
+    // see the guard already held and reject, not run a second concurrent
+    // cycle alongside the tick's.
+    let resolveLua: ((output: string) => void) | undefined;
+    const runCommand = vi.fn(async (cmd: string) => {
+      if (cmd === 'lua') {
+        const output = await new Promise<string>((resolve) => {
+          resolveLua = resolve;
+        });
+        return { success: true, output };
+      }
+      return { success: true, output: rawFixture };
+    });
+    const { deps } = makeDeps({ runCommand });
+    const poller = new Poller(deps, CONFIG);
+
+    poller.start();
+    // Fire the scheduled tick. It runs synchronously up to the point where
+    // it blocks on the (unresolved) date probe -- the guard is already
+    // claimed by then.
+    vi.advanceTimersByTime(CONFIG.pollIntervalMs);
+    expect(poller.getStatus().cycleRunning).toBe(false); // not yet inside runCycle
+    await expect(poller.triggerNow()).rejects.toThrow(/already running/i);
+
+    resolveLua?.(probeOutput(106, SPRING_TICK));
+    await vi.waitFor(() => expect(poller.getStatus().cycleRunning).toBe(false));
+
+    poller.stop();
+  });
+
+  it('15. [Important] history.upsert() throwing during an automatic tick does not crash and surfaces via onChange', async () => {
+    const { deps, history } = makeDeps();
+    // Force the underlying infra failure that cycle.ts's contract allows to
+    // propagate out of runCycle.
+    vi.spyOn(history, 'upsert').mockRejectedValue(new Error('disk full'));
+    const poller = new Poller(deps, CONFIG);
+    const onChange = vi.fn();
+    poller.onChange(onChange);
+
+    let unhandled: unknown;
+    const onUnhandledRejection = (reason: unknown) => {
+      unhandled = reason;
+    };
+    process.on('unhandledRejection', onUnhandledRejection);
+    try {
+      poller.start();
+      await vi.advanceTimersByTimeAsync(CONFIG.pollIntervalMs);
+      // Give any stray unhandled rejection a chance to surface.
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
+
+    expect(unhandled).toBeUndefined();
+    expect(poller.getStatus().lastError).toContain('disk full');
+    expect(onChange.mock.calls.some((call) => call[0].lastError?.includes('disk full'))).toBe(
+      true
+    );
+    // The poller keeps running -- cycleRunning was released, not left stuck.
+    expect(poller.getStatus().cycleRunning).toBe(false);
+
+    poller.stop();
+  });
+
+  it('16. [Important] triggerNow() still rejects when history.upsert() throws', async () => {
+    const { deps } = makeDeps();
+    vi.spyOn(deps.history, 'upsert').mockRejectedValue(new Error('disk full'));
+    const poller = new Poller(deps, CONFIG);
+
+    await expect(poller.triggerNow()).rejects.toThrow(/disk full/);
+    expect(poller.getStatus().cycleRunning).toBe(false);
+  });
+
   it('12. onChange returns an unsubscribe function', async () => {
     const { deps } = makeDeps({
       runCommand: vi.fn(async () => {
