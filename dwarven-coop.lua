@@ -561,9 +561,13 @@ local function get_trade_goods()
             local quality = safe_get(function() return item.quality end, 0)
             local is_tradeable = false
 
-            -- Check if item was made by a fortress dwarf (exclude embark items)
+            -- Check if item was made by a fortress dwarf (exclude embark items).
+            -- Plain crafts/toys/instruments populate maker_race but leave maker (unit id)
+            -- unset; jewelry/goblets/figurines do the opposite (maker set, maker_race -1).
+            -- Check both so neither family of item types is silently dropped.
             local maker_race = safe_get(function() return item.maker_race end, -1)
-            local is_fortress_made = maker_race ~= -1  -- Items with a maker are fortress-made
+            local maker = safe_get(function() return item.maker end, -1)
+            local is_fortress_made = maker_race ~= -1 or maker ~= -1
 
             -- Check for TRUE artifacts (must have a name - artifacts from strange moods are always named)
             local is_artifact = false
@@ -582,47 +586,28 @@ local function get_trade_goods()
                 is_tradeable = true
             end
 
-            -- Only count masterworks made in the fortress that are actual trade goods
-            -- (exclude artifacts, embark items, construction materials, weapons, armor, tools)
-            if quality >= 5 and not is_artifact and is_fortress_made then
-                -- Explicitly exclude certain item types that are never trade goods
-                local item_type_num = safe_get(function() return item:getType() end, -1)
-                local is_excluded_type = (item_type_num == 13)  -- DOOR/SLAB (memorial slabs incorrectly match as instruments)
+            -- Is this a trade good type at all? (crafts, toys, instruments, goblets,
+            -- totems, statues, figurines, and jewelry)
+            local is_trade_good_type = safe_get(function()
+                return (df.item_craftst and df.item_craftst:is_instance(item)) or
+                       (df.item_toyst and df.item_toyst:is_instance(item)) or
+                       (df.item_instrumentst and df.item_instrumentst:is_instance(item)) or
+                       (df.item_gobletst and df.item_gobletst:is_instance(item)) or
+                       (df.item_totemst and df.item_totemst:is_instance(item)) or
+                       (df.item_statuest and df.item_statuest:is_instance(item)) or
+                       (df.item_figurinest and df.item_figurinest:is_instance(item)) or
+                       (df.item_amulettst and df.item_amulettst:is_instance(item)) or
+                       (df.item_ringst and df.item_ringst:is_instance(item)) or
+                       (df.item_earringst and df.item_earringst:is_instance(item)) or
+                       (df.item_braceletst and df.item_braceletst:is_instance(item)) or
+                       (df.item_scepterst and df.item_scepterst:is_instance(item)) or
+                       (df.item_crownst and df.item_crownst:is_instance(item))
+            end, false)
 
-                -- Check if this is actually a trade good type
-                local is_trade_good_type = false
-
-                -- Check each type individually to see which one matches
-                if not is_excluded_type and df.item_craftst and df.item_craftst:is_instance(item) then
-                    is_trade_good_type = true
-                elseif not is_excluded_type and df.item_toyst and df.item_toyst:is_instance(item) then
-                    is_trade_good_type = true
-                elseif not is_excluded_type and df.item_instrumentst and df.item_instrumentst:is_instance(item) then
-                    is_trade_good_type = true
-                elseif not is_excluded_type and df.item_gobletst and df.item_gobletst:is_instance(item) then
-                    is_trade_good_type = true
-                elseif not is_excluded_type and df.item_totemst and df.item_totemst:is_instance(item) then
-                    is_trade_good_type = true
-                elseif not is_excluded_type and df.item_statuest and df.item_statuest:is_instance(item) then
-                    is_trade_good_type = true
-                elseif not is_excluded_type and df.item_amulettst and df.item_amulettst:is_instance(item) then
-                    is_trade_good_type = true
-                elseif not is_excluded_type and df.item_ringst and df.item_ringst:is_instance(item) then
-                    is_trade_good_type = true
-                elseif not is_excluded_type and df.item_earringst and df.item_earringst:is_instance(item) then
-                    is_trade_good_type = true
-                elseif not is_excluded_type and df.item_braceletst and df.item_braceletst:is_instance(item) then
-                    is_trade_good_type = true
-                elseif not is_excluded_type and df.item_scepterst and df.item_scepterst:is_instance(item) then
-                    is_trade_good_type = true
-                elseif not is_excluded_type and df.item_crownst and df.item_crownst:is_instance(item) then
-                    is_trade_good_type = true
-                end
-
-                if is_trade_good_type then
-                    trade_goods.masterworks = trade_goods.masterworks + 1
-                    is_tradeable = true
-                end
+            -- Masterworks made in the fortress (exclude artifacts, embark items) -
+            -- a highlighted subset of crafts below, not counted separately in total_value.
+            if quality >= 5 and not is_artifact and is_fortress_made and is_trade_good_type then
+                trade_goods.masterworks = trade_goods.masterworks + 1
             end
 
             -- Count gems (only cut gems made in fortress)
@@ -635,18 +620,8 @@ local function get_trade_goods()
                 -- Don't count rough gems as trade goods
             end
 
-            -- Count high-value crafts made in fortress (rock/wood/metal crafts for trading)
-            -- Exclude type 13 (DOOR/SLAB) which incorrectly matches as instrument
-            local item_type_num_craft = safe_get(function() return item:getType() end, -1)
-            local is_craft = safe_get(function()
-                return item_type_num_craft ~= 13 and (
-                    (df.item_craftst and df.item_craftst:is_instance(item)) or
-                    (df.item_toyst and df.item_toyst:is_instance(item)) or
-                    (df.item_instrumentst and df.item_instrumentst:is_instance(item))
-                )
-            end, false)
-
-            if is_craft and quality >= 3 and is_fortress_made then  -- Fine quality or better, made in fortress
+            -- Count crafts made in fortress (any quality - caravans buy crafts regardless of quality)
+            if is_trade_good_type and is_fortress_made and not is_artifact then
                 trade_goods.crafts = trade_goods.crafts + 1
                 is_tradeable = true
             end
@@ -1680,7 +1655,7 @@ local function generate_briefing(state)
         table.insert(trade_items, string.format("%d cut gem%s", tg.gems_cut, tg.gems_cut > 1 and "s" or ""))
     end
     if tg.crafts > 0 then
-        table.insert(trade_items, string.format("%d fine craft%s", tg.crafts, tg.crafts > 1 and "s" or ""))
+        table.insert(trade_items, string.format("%d craft%s", tg.crafts, tg.crafts > 1 and "s" or ""))
     end
     if #trade_items > 0 then
         -- Format value with thousands separators for readability
