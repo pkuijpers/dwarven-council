@@ -713,7 +713,9 @@ local function get_unit_equipment(unit)
 
             -- Check armor and shields in worn (mode 2) or uniform (mode 10) slots
             if mode == 2 or mode == 10 then
-                if df.item_armorst:is_instance(item) then
+                if df.item_armorst:is_instance(item) or df.item_helmst:is_instance(item) or
+                   df.item_glovesst:is_instance(item) or df.item_pantsst:is_instance(item) or
+                   df.item_shoesst:is_instance(item) then
                     local mat = dfhack.matinfo.decode(item)
                     local mat_name = mat and mat:toString() or "unknown"
                     local armor_type = item.subtype and item.subtype.name or "armor"
