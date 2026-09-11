@@ -1,10 +1,12 @@
-// Verbatim TypeScript port of the deleted `pct`, `calculate_happiness`,
-// `build_system_prompt` and `build_user_prompt` functions from
-// dwarven-coop.lua (pre-deletion source: pct at line 31, calculate_happiness
-// at line 1529, build_system_prompt at line 1987, build_user_prompt at line
-// 2064). The golden-file test in test/prompt.test.ts pins the combined
-// output of buildSystemPrompt + buildUserPrompt to be byte-for-byte
-// identical to what the old Lua code printed for the same fortress state.
+// Originally a verbatim TypeScript port of the deleted `pct`,
+// `calculate_happiness`, `build_system_prompt` and `build_user_prompt`
+// functions from dwarven-coop.lua (pre-deletion source: pct at line 31,
+// calculate_happiness at line 1529, build_system_prompt at line 1987,
+// build_user_prompt at line 2064). buildSystemPrompt/buildUserPrompt have
+// since diverged intentionally from that legacy Lua output (shorter, fewer
+// motions, briefing-grounded instructions) -- see test/prompt.test.ts for
+// the current behavioral contract; there is no longer a byte-for-byte
+// golden-file test against the old Lua format.
 
 import { asRecord } from './payload.js';
 import { FACTION_ORDER, FACTION_NARRATIVES } from './factions.js';
@@ -130,8 +132,7 @@ The dwarves have organized themselves as a cooperative. Key principles:
 #### Motion 1: [Objective title]
 Submitted by: [Faction]
 - KR1: [Measurable key result]
-- KR2: [Measurable key result]  
-- KR3: [Measurable key result]
+- KR2: [Measurable key result]
 
 **Vote Result:**
 - For: [X] votes ([factions])
@@ -139,7 +140,7 @@ Submitted by: [Faction]
 - Abstain: [Z] votes
 - [PASS] ADOPTED / [FAIL] REJECTED
 
-[Repeat for each motion - usually 3-4 motions]
+[Repeat for each motion - usually 1-2 motions, each with 2-3 KRs]
 
 ### [NOTE] Minutes
 [Brief summary and advice for the player]
@@ -147,6 +148,8 @@ Submitted by: [Faction]
 ## Guidelines
 - OKRs must be achievable within one season
 - Key Results are specific and measurable
+- Keep the whole assembly short: 1-2 motions that matter most this quarter, not one per faction
+- Ground the theme, debate, and motions in specifics from the briefing above (named dwarves, spokesperson personalities, Fortress Chronicle events, current shortages) rather than generic faction talking points that could apply to any quarter
 - Show realistic faction dynamics (sometimes conflict, sometimes consensus)
 - Larger factions have more influence but small factions can form coalitions
 - Address urgent concerns first
@@ -181,15 +184,16 @@ export function buildUserPrompt(
   if (pop.military < pop.total / 10) {
     focusAreas.push('Collective defense');
   }
-  focusAreas.push('Wealth building');
-  focusAreas.push('Infrastructure');
 
   let prompt = '# General Assembly - Quarterly Meeting\n\n';
   prompt += briefing + '\n\n';
   prompt += '## Assembly Context\n';
   prompt += 'Available workforce: ' + available + ' dwarves\n';
   prompt += 'Quorum: ' + (Math.floor(pop.eligible_voters / 2) + 1) + ' votes\n';
-  prompt += 'Suggested focus areas: ' + focusAreas.join(', ') + '\n\n';
+  if (focusAreas.length > 0) {
+    prompt += 'Suggested focus areas: ' + focusAreas.join(', ') + '\n';
+  }
+  prompt += '\n';
   prompt +=
     'Conduct the General Assembly and produce the OKRs for the coming quarter through democratic voting.';
 

@@ -40,34 +40,26 @@ describe('prompt port', () => {
     );
   });
 
-  it('reproduces the legacy Lua prompt byte for byte', () => {
-    // The deleted `print_llm_prompt(system_prompt, user_prompt)` was:
-    //   print(system_prompt .. "\n\n" .. user_prompt)
-    // Lua's `print` always appends a trailing "\n" to what it writes, and
-    // legacy-prompt.txt was captured from that real stdout (banner
-    // stripped) -- confirmed by inspecting its raw bytes, which end
-    // "...voting.\n" with no second blank line. Neither build_system_prompt
-    // nor build_user_prompt appends a trailing newline itself (checked
-    // against the pre-deletion Lua source), so that final "\n" belongs to
-    // the print step, not to either pure builder -- it's added here rather
-    // than inside buildSystemPrompt/buildUserPrompt.
-    const combined =
-      buildSystemPrompt(payload.state) +
-      '\n\n' +
-      buildUserPrompt(payload.state, payload.briefing) +
-      '\n';
-    expect(combined).toBe(readFileSync(fixturePath('legacy-prompt.txt'), 'utf8'));
-  });
-
   it('puts exactly one newline between the faction list and the procedure heading', () => {
     const sys = buildSystemPrompt(payload.state);
     expect(sys).toMatch(/Priorities: [^\n]+\n## Assembly Procedure/);
   });
 
-  it('keeps the two trailing spaces on the KR2 line', () => {
-    expect(buildSystemPrompt(payload.state)).toContain(
-      '- KR2: [Measurable key result]  \n'
+  it('instructs 1-2 motions with 2-3 key results each, not the old 3-4 motions of 3 KRs', () => {
+    const sys = buildSystemPrompt(payload.state);
+    expect(sys).toContain(
+      '[Repeat for each motion - usually 1-2 motions, each with 2-3 KRs]'
     );
+    expect(sys).not.toContain('- KR3: [Measurable key result]');
+    expect(sys).not.toContain('usually 3-4 motions');
+  });
+
+  it('instructs grounding the assembly in specifics from the briefing rather than generic talking points', () => {
+    const sys = buildSystemPrompt(payload.state);
+    expect(sys).toContain(
+      'Ground the theme, debate, and motions in specifics from the briefing above'
+    );
+    expect(sys).toContain('Fortress Chronicle');
   });
 
   it('covers every faction the game reports', () => {
@@ -184,10 +176,26 @@ describe('buildUserPrompt focus areas', () => {
     expect(buildUserPrompt(state, 'briefing')).not.toContain('Collective defense');
   });
 
-  it('always includes "Wealth building" and "Infrastructure" in that order at the end', async () => {
+  it('never suggests generic "Wealth building" or "Infrastructure" focus areas', async () => {
     const state = await loadState();
     const prompt = buildUserPrompt(state, 'briefing');
-    expect(prompt).toContain('Wealth building, Infrastructure');
+    expect(prompt).not.toContain('Wealth building');
+    expect(prompt).not.toContain('Infrastructure');
+  });
+
+  it('omits the "Suggested focus areas" line entirely when no threshold triggers', async () => {
+    const state = await loadState();
+    state.population.stress = { ...zeroStress, joyous: 100 }; // happiness 100
+    state.resources.food.status = 'abundant';
+    state.resources.drink.status = 'abundant';
+    state.population.military = 20;
+    state.population.total = 100;
+    const prompt = buildUserPrompt(state, 'briefing');
+    expect(prompt).not.toContain('Suggested focus areas');
+    expect(prompt).toContain('Quorum: ');
+    expect(prompt).toContain(
+      '\n\nConduct the General Assembly and produce the OKRs for the coming quarter through democratic voting.'
+    );
   });
 
   it('computes available workforce as adults - military - injured, and can go negative', async () => {
