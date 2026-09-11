@@ -30,6 +30,27 @@ function renderInline(text) {
     .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
 }
 
+/** Splits a "| a | b | c |" (or bare "a | b | c") row into trimmed cell strings. */
+function splitTableRow(line) {
+  const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '');
+  return trimmed.split('|').map((cell) => cell.trim());
+}
+
+/** A separator row like "|---|:---:|---|" -- dashes/colons only per cell, at least one dash. */
+function isTableSeparatorRow(line) {
+  const cells = splitTableRow(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-+:?$/.test(cell));
+}
+
+function renderTable(headerLine, bodyLines) {
+  const headerCells = splitTableRow(headerLine);
+  const headerHtml = `<tr>${headerCells.map((c) => `<th>${renderInline(c)}</th>`).join('')}</tr>`;
+  const bodyHtml = bodyLines
+    .map((line) => `<tr>${splitTableRow(line).map((c) => `<td>${renderInline(c)}</td>`).join('')}</tr>`)
+    .join('');
+  return `<div class="table-wrap"><table><thead>${headerHtml}</thead><tbody>${bodyHtml}</tbody></table></div>`;
+}
+
 function renderMarkdown(markdown) {
   const lines = String(markdown ?? '').split('\n');
   const blocks = [];
@@ -50,15 +71,27 @@ function renderMarkdown(markdown) {
     }
   };
 
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     const bulletItem = /^[-*]\s+(.*)$/.exec(line);
     const orderedItem = /^\d+\.\s+(.*)$/.exec(line);
+    const isTableHeader = line.includes('|') && i + 1 < lines.length && isTableSeparatorRow(lines[i + 1]);
 
     if (line === '') {
       flushParagraph();
       flushList();
+    } else if (isTableHeader) {
+      flushParagraph();
+      flushList();
+      const bodyLines = [];
+      let j = i + 2;
+      while (j < lines.length && lines[j].trim() !== '' && lines[j].includes('|')) {
+        bodyLines.push(lines[j]);
+        j++;
+      }
+      blocks.push(renderTable(line, bodyLines));
+      i = j - 1;
     } else if (/^-{3,}$/.test(line)) {
       flushParagraph();
       flushList();
@@ -138,8 +171,14 @@ function parseMotions(bodyLines) {
 
   for (const rawLine of bodyLines) {
     const line = rawLine.trim();
+    // Vote lines are emitted as "- **For: 34** (...)" -- the bold markers sit
+    // *inside* the bullet, wrapping the whole "Label: N" span, so matching
+    // against the raw line would miss them (the label isn't the first thing
+    // after the bullet, "**" is). Stripping "**" first lets VOTE_LINE match
+    // regardless of where the assembly happened to place the bold markers.
+    const strippedLine = line.replace(/\*\*/g, '');
     const motionMatch = MOTION_HEADING.exec(line);
-    const voteMatch = VOTE_LINE.exec(line);
+    const voteMatch = VOTE_LINE.exec(strippedLine);
     const resultMatch = RESULT_LINE.exec(line);
 
     if (motionMatch) {
@@ -147,13 +186,23 @@ function parseMotions(bodyLines) {
       current = { title: motionMatch[1], submittedBy: '', krs: [], votes: {}, result: null };
     } else if (!current) {
       continue;
+    } else if (/^-{3,}$/.test(line)) {
+      // Horizontal rule between motions -- not content.
     } else if (/^submitted by:/i.test(line)) {
       current.submittedBy = line.replace(/^submitted by:\s*/i, '');
     } else if (resultMatch) {
       current.result = resultMatch[1] === 'PASS' ? 'pass' : 'fail';
     } else if (voteMatch) {
       current.votes[voteMatch[1].toLowerCase()] = voteMatch[2];
-    } else if (KR_ITEM.test(line) && /^[-*]/.test(line) && !/^\*\*/.test(line)) {
+    } else if (
+      KR_ITEM.test(line) &&
+      /^[-*]/.test(line) &&
+      !/^\*\*/.test(line) &&
+      // A whole line wrapped in single asterisks is an italic aside (e.g.
+      // "*Urist: ...*"), not a bulleted KR -- "*" here is emphasis, not a
+      // list marker.
+      !/^\*[^*].*\*$/.test(line)
+    ) {
       current.krs.push(KR_ITEM.exec(line)[1]);
     }
   }
@@ -216,9 +265,12 @@ function adoptedMotions(okrsText) {
 
 function renderOkrList(motions, compact) {
   const listClass = compact ? 'okr-list okr-list--compact' : 'okr-list';
-  const items = motions
-    .map((m) => `<div class="okr-item"><span class="okr-item__mark">&#10022;</span><span>${renderInline(m.title)}</span></div>`)
-    .join('');
+  const items = motions.map((m) => {
+    const krs = !compact && m.krs.length > 0
+      ? `<div class="okr-item__krs">${m.krs.map((kr) => `<div class="okr-item__kr">${renderInline(kr)}</div>`).join('')}</div>`
+      : '';
+    return `<div class="okr-item"><span class="okr-item__mark">&#10022;</span><div><div>${renderInline(m.title)}</div>${krs}</div></div>`;
+  }).join('');
   return `<div class="${listClass}">${items}</div>`;
 }
 
@@ -229,9 +281,39 @@ function renderOkrList(motions, compact) {
 const connectionEl = document.getElementById('status-connection');
 const dateEl = document.getElementById('status-date');
 const nextSeasonEl = document.getElementById('status-next-season');
-const cycleEl = document.getElementById('status-cycle');
 const errorEl = document.getElementById('status-error');
 const triggerButton = document.getElementById('trigger-now');
+const progressBannerEl = document.getElementById('progress-banner');
+const progressTimerEl = document.getElementById('progress-banner-timer');
+
+/** Interval driving the progress banner's elapsed-time readout; only runs while a cycle is in flight. */
+let progressTimerHandle = null;
+
+function formatElapsed(startedAt) {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return mins > 0 ? `${mins}m ${secs}s elapsed` : `${secs}s elapsed`;
+}
+
+function updateProgressBanner(cycleStartedAt) {
+  if (!cycleStartedAt) {
+    progressBannerEl.hidden = true;
+    if (progressTimerHandle) {
+      clearInterval(progressTimerHandle);
+      progressTimerHandle = null;
+    }
+    return;
+  }
+
+  progressBannerEl.hidden = false;
+  progressTimerEl.textContent = formatElapsed(cycleStartedAt);
+  if (!progressTimerHandle) {
+    progressTimerHandle = setInterval(() => {
+      progressTimerEl.textContent = formatElapsed(cycleStartedAt);
+    }, 1000);
+  }
+}
 
 function renderStatus(status) {
   if (status.connected && status.fortressLoaded) {
@@ -256,7 +338,7 @@ function renderStatus(status) {
     nextSeasonEl.textContent = 'Next season: —';
   }
 
-  cycleEl.hidden = !status.cycleRunning;
+  updateProgressBanner(status.cycleStartedAt);
   if (status.lastError) {
     errorEl.hidden = false;
     errorEl.textContent = `Last error: ${status.lastError}`;
@@ -300,7 +382,7 @@ const currentPaneEl = document.getElementById('pane-current');
 const currentEmptyEl = document.getElementById('current-empty');
 
 function renderCurrentPane(cycle) {
-  currentPaneEl.querySelectorAll('.okr-hero, .history-card__error').forEach((el) => el.remove());
+  currentPaneEl.querySelectorAll('.okr-hero, .current-report').forEach((el) => el.remove());
   currentEmptyEl.hidden = Boolean(cycle);
   if (!cycle) return;
 
@@ -321,6 +403,15 @@ function renderCurrentPane(cycle) {
   }
 
   currentPaneEl.appendChild(hero);
+
+  if (cycle.assembly) {
+    const report = document.createElement('div');
+    report.className = 'current-report';
+    report.innerHTML =
+      `<div class="current-report__label">Assembly report — ${escapeHtml(cycle.seasonName)} ${cycle.year}</div>` +
+      `<div class="markdown">${renderAssembly(cycle.assembly)}</div>`;
+    currentPaneEl.appendChild(report);
+  }
 }
 
 // ---------------------------------------------------------------------------

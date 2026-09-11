@@ -553,6 +553,31 @@ describe('Poller', () => {
     expect(status.lastError).toMatch(/disk full/);
   });
 
+  it('20. cycleStartedAt is set to now() while a cycle runs and cleared once it completes', async () => {
+    let resolveRunCommand: (() => void) | undefined;
+    const runCommand = vi.fn(async (cmd: string) => {
+      if (cmd === 'dwarven-coop') {
+        await new Promise<void>((resolve) => {
+          resolveRunCommand = resolve;
+        });
+        return { success: true, output: rawFixture };
+      }
+      return { success: true, output: probeOutput(106, SPRING_TICK) };
+    });
+    const { deps } = makeDeps({ runCommand });
+    const poller = new Poller(deps, CONFIG);
+
+    const triggerPromise = poller.triggerNow();
+    await vi.waitFor(() => expect(poller.getStatus().cycleRunning).toBe(true));
+
+    expect(poller.getStatus().cycleStartedAt).toBe(NOW.toISOString());
+
+    resolveRunCommand?.();
+    await triggerPromise;
+
+    expect(poller.getStatus().cycleStartedAt).toBeUndefined();
+  });
+
   it('12. onChange returns an unsubscribe function', async () => {
     const { deps } = makeDeps({
       runCommand: vi.fn(async () => {

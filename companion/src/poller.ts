@@ -43,6 +43,9 @@ export interface PollerStatus {
   date?: GameDate;
   lastCycleId?: string;
   cycleRunning: boolean;
+  /** ISO timestamp of when the in-flight cycle started; unset while idle. Lets
+   * the UI show elapsed time, including correctly across a page refresh. */
+  cycleStartedAt?: string;
   lastError?: string;
 }
 
@@ -250,7 +253,7 @@ export class Poller {
    * public status -- each caller decides how to handle the rejection itself.
    */
   private async runCycleAndTrack(date: GameDate): Promise<Cycle> {
-    this.setStatus({ cycleRunning: true });
+    this.setStatus({ cycleRunning: true, cycleStartedAt: this.deps.now().toISOString() });
     try {
       const cycle = await runCycle(date, this.deps);
       this.setStatus({
@@ -262,7 +265,7 @@ export class Poller {
       }
       return cycle;
     } finally {
-      this.setStatus({ cycleRunning: false });
+      this.setStatus({ cycleRunning: false, cycleStartedAt: undefined });
     }
   }
 

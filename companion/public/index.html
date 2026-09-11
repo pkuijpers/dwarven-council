@@ -12,10 +12,15 @@
       <span id="status-connection" class="status-pill status-pill--unknown">Connecting&hellip;</span>
       <span id="status-date" class="status-item">Date: &mdash;</span>
       <span id="status-next-season" class="status-item">Next season: &mdash;</span>
-      <span id="status-cycle" class="status-item" hidden>Assembly in progress&hellip;</span>
       <span id="status-error" class="status-item status-item--error" hidden></span>
       <button id="trigger-now" class="trigger-button" type="button">Trigger assembly now</button>
     </header>
+
+    <div id="progress-banner" class="progress-banner" hidden>
+      <div class="progress-banner__bar"></div>
+      <span class="progress-banner__text">&#9873; Assembly in progress&hellip;</span>
+      <span id="progress-banner-timer" class="progress-banner__timer"></span>
+    </div>
 
     <nav class="tabs" role="tablist">
       <button id="tab-current" class="tab tab--active" type="button" role="tab" aria-selected="true" data-tab="current">Current</button>

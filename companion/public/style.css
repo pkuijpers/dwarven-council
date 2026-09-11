@@ -101,6 +101,60 @@ body {
 }
 
 /* ---------------------------------------------------------------------
+   Progress banner (assembly in flight)
+   --------------------------------------------------------------------- */
+
+.progress-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 1.25rem;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg));
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.progress-banner[hidden] {
+  display: none;
+}
+
+.progress-banner__bar {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--accent) 22%, transparent),
+    color-mix(in srgb, var(--accent) 22%, transparent) 12px,
+    transparent 12px,
+    transparent 24px
+  );
+  background-size: 200% 200%;
+  animation: progress-banner-scroll 1.2s linear infinite;
+}
+
+@keyframes progress-banner-scroll {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 34px 0;
+  }
+}
+
+.progress-banner__text {
+  position: relative;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.progress-banner__timer {
+  position: relative;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------
    Tabs
    --------------------------------------------------------------------- */
 
@@ -190,6 +244,24 @@ body {
   color: var(--accent);
 }
 
+.okr-item__krs {
+  margin-top: 0.3rem;
+}
+
+.okr-item__kr {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0.15rem 0;
+  padding-left: 0.9rem;
+  position: relative;
+}
+
+.okr-item__kr::before {
+  content: '\2013';
+  position: absolute;
+  left: 0;
+}
+
 .okr-list--compact .okr-item {
   font-size: 0.88rem;
   margin: 0.25rem 0;
@@ -198,6 +270,28 @@ body {
 .okr-empty {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+/* ---------------------------------------------------------------------
+   Current tab: assembly report
+   --------------------------------------------------------------------- */
+
+.current-report {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin-top: 1.25rem;
+  overflow-x: auto;
+}
+
+.current-report__label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 0.75rem;
 }
 
 /* ---------------------------------------------------------------------
@@ -405,4 +499,28 @@ body {
   border: none;
   border-top: 1px solid var(--border);
   margin: 0.8rem 0;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.markdown table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--border);
+  padding: 0.3rem 0.6rem;
+  text-align: left;
+}
+
+.markdown th {
+  background: var(--card-bg-alt);
+  color: var(--accent);
+  font-weight: 700;
 }
