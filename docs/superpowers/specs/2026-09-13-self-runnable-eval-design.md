@@ -137,7 +137,7 @@ a snapshot of exact text formatting, which stays free to change.
 2. A cycle is triggered (companion polling, or a manual
    `dwarven-coop assembly` run through the cycle orchestrator) → it lands
    in `history.json`.
-3. Claude Code runs `node companion/scripts/eval-grounding.ts` (defaults
+3. Claude Code runs `node companion/scripts/eval-grounding.mjs` (defaults
    to the latest cycle) → reads the facts sheet next to the narrative →
    judges consistency itself.
 4. On a mismatch: if the *number* was wrong, that's a Component A concern

@@ -56,7 +56,7 @@ export function buildFactsSheet(state: unknown): string {
   const stress = asRecord(population.stress);
   const military = asRecord(s.military);
   const { members, armorPieces } = countSquads(military);
-  const squadCount = typeof military.squad_count === 'number' ? military.squad_count : 0;
+  const squadCount = Array.isArray(military.squads) ? military.squads.length : 0;
   const zones = asRecord(s.zones);
   const mining = asRecord(s.mining);
 

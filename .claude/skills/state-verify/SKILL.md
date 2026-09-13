@@ -23,6 +23,14 @@ loaded (see the MCP prerequisites in the root `CLAUDE.md`). If
 `mcp__dfhack__dfhack_status` reports no connection, these checks cannot
 run — say so rather than guessing.
 
+Not every `df.item_X`/`df.item_Xst` type is defined on every DFHack
+build (e.g. `df.item_craftst` and `df.item_amulettst` are `nil` on some
+builds). Every alternate query below therefore guards each type check as
+`df.item_X and df.item_X:is_instance(item)` instead of assuming the type
+exists — this mirrors how the production Lua (see `get_trade_goods()` in
+`dwarven-coop.lua`) already guards its own type checks, and the alt-check
+snippets must too, or they crash with `attempt to index a nil value`.
+
 Run each snippet's body as the `code` argument to `mcp__dfhack__lua_eval`
 verbatim — that argument takes raw Lua, not the `:lua` DFHack-console
 prefix. Each snippet already ends in `print(n)`, so the tool's
@@ -50,13 +58,19 @@ last time):
 local n = 0
 for _, item in ipairs(df.global.world.items.all) do
   local is_trade_good_type =
-    df.item_craftst:is_instance(item) or df.item_toyst:is_instance(item) or
-    df.item_instrumentst:is_instance(item) or df.item_gobletst:is_instance(item) or
-    df.item_totemst:is_instance(item) or df.item_statuest:is_instance(item) or
-    df.item_figurinest:is_instance(item) or df.item_amulettst:is_instance(item) or
-    df.item_ringst:is_instance(item) or df.item_earringst:is_instance(item) or
-    df.item_braceletst:is_instance(item) or df.item_scepterst:is_instance(item) or
-    df.item_crownst:is_instance(item)
+    (df.item_craftst and df.item_craftst:is_instance(item)) or
+    (df.item_toyst and df.item_toyst:is_instance(item)) or
+    (df.item_instrumentst and df.item_instrumentst:is_instance(item)) or
+    (df.item_gobletst and df.item_gobletst:is_instance(item)) or
+    (df.item_totemst and df.item_totemst:is_instance(item)) or
+    (df.item_statuest and df.item_statuest:is_instance(item)) or
+    (df.item_figurinest and df.item_figurinest:is_instance(item)) or
+    (df.item_amulettst and df.item_amulettst:is_instance(item)) or
+    (df.item_ringst and df.item_ringst:is_instance(item)) or
+    (df.item_earringst and df.item_earringst:is_instance(item)) or
+    (df.item_braceletst and df.item_braceletst:is_instance(item)) or
+    (df.item_scepterst and df.item_scepterst:is_instance(item)) or
+    (df.item_crownst and df.item_crownst:is_instance(item))
   if is_trade_good_type and not item.flags.trader and not item.flags.hostile and
      not item.flags.removed and not item.flags.forbid and not item.flags.dump and
      not item.flags.in_building and item.pos.x ~= -30000 then
@@ -86,9 +100,11 @@ instead of unit → inventory, and fortress-wide instead of per-squad):
 local n = 0
 for _, item in ipairs(df.global.world.items.all) do
   local is_armor_type =
-    df.item_armorst:is_instance(item) or df.item_helmst:is_instance(item) or
-    df.item_glovesst:is_instance(item) or df.item_pantsst:is_instance(item) or
-    df.item_shoesst:is_instance(item)
+    (df.item_armorst and df.item_armorst:is_instance(item)) or
+    (df.item_helmst and df.item_helmst:is_instance(item)) or
+    (df.item_glovesst and df.item_glovesst:is_instance(item)) or
+    (df.item_pantsst and df.item_pantsst:is_instance(item)) or
+    (df.item_shoesst and df.item_shoesst:is_instance(item))
   if is_armor_type then
     for _, ref in ipairs(item.general_refs) do
       if ref:getType() == df.general_ref_type.UNIT_HOLDER then
@@ -143,9 +159,11 @@ two helper pairs — worth a closer look either way.
 ```lua
 local n = 0
 for _, item in ipairs(df.global.world.items.all) do
-  if (df.item_foodst:is_instance(item) or df.item_fishst:is_instance(item) or
-      df.item_fish_rawst:is_instance(item) or df.item_meatst:is_instance(item) or
-      df.item_plantst:is_instance(item)) and item.pos.x ~= -30000 then
+  if ((df.item_foodst and df.item_foodst:is_instance(item)) or
+      (df.item_fishst and df.item_fishst:is_instance(item)) or
+      (df.item_fish_rawst and df.item_fish_rawst:is_instance(item)) or
+      (df.item_meatst and df.item_meatst:is_instance(item)) or
+      (df.item_plantst and df.item_plantst:is_instance(item))) and item.pos.x ~= -30000 then
     n = n + 1
   end
 end
