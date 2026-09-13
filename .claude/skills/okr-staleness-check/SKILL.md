@@ -24,6 +24,12 @@ loaded (see the MCP prerequisites in the root `CLAUDE.md`). If
 `mcp__dfhack__dfhack_status` reports no connection, this check cannot
 run — say so rather than guessing.
 
+Run each snippet's body as the `code` argument to `mcp__dfhack__lua_eval`
+verbatim — that argument takes raw Lua, not the `:lua` DFHack-console
+prefix. Snippets below that end in `print(...)` are unaffected by the
+tool's print-auto-wrap (which only fires when `code` doesn't already
+contain `print`).
+
 ## The method
 
 1. **Get the OKR text** for the cycle in question — from the user's own
@@ -34,6 +40,8 @@ run — say so rather than guessing.
 2. **Identify the category** the OKR is about by reading it. No
    classification code — the same judgment call `eval-grounding`'s
    workflow already asks for when assessing narrative grounding.
+   Also fetch `mcp__dfhack__coop_assembly` for the current state JSON —
+   step 4's classification is a comparison against exactly this payload.
 
 3. **Write a targeted `lua_eval` query** that checks the specific thing
    the OKR claims still needs doing. It does not need to look like any
@@ -58,6 +66,10 @@ run — say so rather than guessing.
      basis despite the state given being complete and correct. This is
      `eval-grounding`'s territory, not this skill's — don't "fix" it by
      adding more state.
+
+   The line between "confirmed gap" and "existing category, wrong
+   granularity" can be genuinely ambiguous in practice — don't agonize
+   over a borderline case, since step 5 routes both to the same hand-off.
 
 5. **On a confirmed gap or granularity issue**, hand off to the normal
    development workflow: add or extend a `get_*()` field in
@@ -85,7 +97,7 @@ known from `collect_state()`'s own code):
 ```lua
 for _, bld in ipairs(df.global.world.world_data.active_site[0].buildings) do
   if df.abstract_building_templest and df.abstract_building_templest:is_instance(bld) then
-    print(dfhack.buildings.getName(bld))
+    print(dfhack.translation.translateName(bld.name, true))
     for k, v in pairs(bld) do print(k, v) end
   end
 end
@@ -116,12 +128,19 @@ for _, artifact in ipairs(df.global.world.artifacts.all) do
 end
 ```
 
-Match by name against what the OKR references. If it exists but is
-older than 2 years: **existing category, wrong granularity** — but note
-the fix here isn't necessarily "add a field," it might be "widen
-`lookback_years`" or "add a separate, non-windowed 'notable past
-achievements' list" — the diagnosis is the same shape, the eventual fix
-can differ from the temple example above.
+Match by name against what the OKR references. The snippet only confirms
+the artifact exists live right now — it doesn't print a creation year or
+event date, so don't try to compute an exact age from it. The reliable
+signal instead: the artifact is found by this live, unwindowed query, but
+does *not* appear anywhere in the current cycle's `fortress_history`
+field from `mcp__dfhack__coop_assembly` (which is windowed to
+`lookback_years = 2`). That mismatch — exists live, absent from the state
+payload — is itself the **existing category, wrong granularity** signal,
+without needing to know precisely how old it is. Note the fix here isn't
+necessarily "add a field," it might be "widen `lookback_years`" or "add a
+separate, non-windowed 'notable past achievements' list" — the diagnosis
+is the same shape, the eventual fix can differ from the temple example
+above.
 
 ## Related skills
 
