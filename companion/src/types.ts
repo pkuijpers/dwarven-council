@@ -70,6 +70,7 @@ export interface CoopState {
   locations: unknown;
   military: unknown;
   mining: unknown;
+  petitions: unknown;
   spokespersons: unknown;
   trade_goods: unknown;
   zones: unknown;

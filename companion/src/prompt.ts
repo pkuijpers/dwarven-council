@@ -150,6 +150,7 @@ Submitted by: [Faction]
 - Key Results are specific and measurable
 - Keep the whole assembly short: 1-2 motions that matter most this quarter, not one per faction
 - Ground the theme, debate, and motions in specifics from the briefing above (named dwarves, spokesperson personalities, Fortress Chronicle events, current shortages) rather than generic faction talking points that could apply to any quarter
+- If the briefing lists a pending petition, address it explicitly: have factions weigh in and have the assembly vote to grant or deny it, rather than only mentioning it in passing
 - Show realistic faction dynamics (sometimes conflict, sometimes consensus)
 - Larger factions have more influence but small factions can form coalitions
 - Address urgent concerns first

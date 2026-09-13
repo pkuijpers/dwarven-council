@@ -1310,6 +1310,95 @@ local function get_locations()
     return locations
 end
 
+-- Petitions from guilds/religious orders to establish a temple or guildhall
+-- at this site (df.global.world.agreements, details[0].type == Location).
+-- Mirrors the vanilla `list-agreements.lua` / `gui/petitions` logic (temple
+-- and guildhall petitions only -- residency/citizenship petitions are a
+-- separate agreement type that's normally auto-resolved by standing orders
+-- before an assembly ever sees it, so they're deliberately out of scope).
+local YEAR_TICKS = 403200 -- 12 months * 28 days * 1200 ticks/day
+
+local function get_petition_deity_name(loc)
+    return safe_get(function()
+        if loc.deity_type == df.religious_practice_type.WORSHIP_HFID then
+            local hf = df.historical_figure.find(loc.deity_data.practice_id)
+            return hf and translate_name(hf.name, true) or "an unknown deity"
+        end
+        local entity = df.global.world.entities.all[loc.deity_data.practice_id]
+        local deities = entity and entity.relations.deities
+        if not deities or #deities == 0 then return "an unknown deity" end
+        local hf = df.global.world.history.figures[deities[0]]
+        return hf and translate_name(hf.name, true) or "an unknown deity"
+    end, "an unknown deity")
+end
+
+local function get_petition_guild_profession(loc)
+    return safe_get(function()
+        local name = tostring(df.profession[loc.profession]):lower():gsub("_", " ")
+        if name:find("man") then
+            local race_name = dfhack.units.getRaceNameById(df.global.plotinfo.race_id):lower()
+            name = name:gsub("man", race_name)
+        end
+        return name
+    end, "an unspecified guild")
+end
+
+local function get_petition_party_name(agr)
+    return safe_get(function()
+        local entity = df.global.world.entities.all[agr.parties[0].entity_ids[0]]
+        return translate_name(entity.name, true)
+    end, "An Unknown Group")
+end
+
+local function get_petitions()
+    local petitions = {}
+    local site_id = safe_get(function()
+        return df.global.world.world_data.active_site[0].id
+    end, -1)
+    local cur_year = df.global.cur_year
+    local cur_tick = df.global.cur_year_tick
+
+    for _, agr in ipairs(df.global.world.agreements.all) do
+        local ok, petition = pcall(function()
+            if #agr.details == 0 then return nil end
+            local detail = agr.details[0]
+            if detail.type ~= df.agreement_details_type.Location then return nil end
+            local loc = detail.data.Location
+            if loc.site ~= site_id then return nil end
+            if agr.flags.convicted_accepted or agr.flags.petition_not_accepted then return nil end
+
+            local age_ticks = (cur_year - detail.year) * YEAR_TICKS + (cur_tick - detail.year_tick)
+            if age_ticks >= YEAR_TICKS then return nil end -- expired, same as vanilla is_resolved()
+
+            local result = {
+                petitioner = get_petition_party_name(agr),
+                date = tick_to_date(detail.year, detail.year_tick),
+                age_days = math.floor(age_ticks / 1200)
+            }
+
+            if loc.type == df.abstract_building_type.TEMPLE then
+                result.kind = "temple"
+                result.establishment = loc.tier == 2 and "Temple Complex" or "Temple"
+                result.deity = get_petition_deity_name(loc)
+            elseif loc.type == df.abstract_building_type.GUILDHALL then
+                result.kind = "guildhall"
+                result.establishment = loc.tier == 2 and "Grand Guildhall" or "Guildhall"
+                result.profession = get_petition_guild_profession(loc)
+            else
+                return nil -- some other abstract building type we don't narrate
+            end
+
+            return result
+        end)
+
+        if ok and petition then
+            table.insert(petitions, petition)
+        end
+    end
+
+    return petitions
+end
+
 local function get_mining_inventory()
     -- Inventory tables
     local stone_boulders = {}  -- key = stone name, value = count
@@ -1481,6 +1570,7 @@ local function collect_state()
         buildings = get_buildings_summary(),
         zones = get_zones(),
         locations = get_locations(),
+        petitions = get_petitions(),
         events = get_fortress_history(),
         mining = get_mining_inventory()
     }
@@ -1600,6 +1690,22 @@ local function generate_briefing(state)
         table.insert(lines, "## Urgent Agenda Items")
         for _, c in ipairs(concerns) do
             table.insert(lines, c)
+        end
+        table.insert(lines, "")
+    end
+
+    -- Petitions
+    if #state.petitions > 0 then
+        table.insert(lines, "## Petitions Before the Assembly")
+        for _, p in ipairs(state.petitions) do
+            local ask
+            if p.kind == "temple" then
+                ask = string.format("establish a %s for worshiping %s", p.establishment, p.deity)
+            else
+                ask = string.format("establish a %s for the %s guild", p.establishment, p.profession)
+            end
+            table.insert(lines, string.format("- %s petitions to %s (submitted %s, %s ago)",
+                p.petitioner, ask, format_date_string(p.date), plural(p.age_days, "day")))
         end
         table.insert(lines, "")
     end
