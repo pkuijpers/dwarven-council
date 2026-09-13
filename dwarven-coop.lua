@@ -302,9 +302,9 @@ local function analyze_population()
     local stress_categories = {
         [0] = "miserable",  -- Negative (lowest)
         [1] = "stressed",   -- Negative
-        [2] = "unhappy",    -- Neutral (lower)
-        [3] = "fine",       -- Neutral (middle)
-        [4] = "content",    -- Neutral (upper)
+        [2] = "unhappy",    -- Negative (upper)
+        [3] = "fine",       -- Neutral
+        [4] = "content",    -- Positive (lower)
         [5] = "happy",      -- Positive
         [6] = "joyous"      -- Positive (highest)
     }
@@ -499,8 +499,13 @@ local function get_resources(population)
         end
     end
 
-    -- Calculate days of supply based on population
-    -- Dwarves eat ~2 times per season (84 days), drink ~5 times per season
+    -- Calculate days of supply based on population.
+    -- consumption_per_season is measured, not guessed: sampled live
+    -- unit.counters2.hunger_timer / thirst_timer across the fortress (83
+    -- citizens) topped out at 42756 / 22024 ticks. At DF's fixed 1200
+    -- ticks/day that's ~35.6 days/meal and ~18.4 days/drink, i.e. ~2.4
+    -- meals and ~4.6 drinks per 84-day season -- DF's hunger/thirst clock
+    -- is deliberately much slower than real-world eating/drinking.
     local function status_for_supply(count, consumption_per_season)
         local pop = population or 1
         if pop == 0 then pop = 1 end
@@ -514,8 +519,8 @@ local function get_resources(population)
         else return "critical", days_of_supply end                           -- <= 0.5 season
     end
 
-    local food_status, food_days = status_for_supply(food_count, 2)
-    local drink_status, drink_days = status_for_supply(drink_count, 5)
+    local food_status, food_days = status_for_supply(food_count, 2.4)
+    local drink_status, drink_days = status_for_supply(drink_count, 4.6)
 
     return {
         food = {
@@ -1539,9 +1544,9 @@ local function generate_briefing(state)
     
     local happiness = calculate_happiness(pop.stress)
     local concerns = identify_concerns(state)
-    local positive = pop.stress.joyous + pop.stress.happy
-    local neutral = pop.stress.unhappy + pop.stress.fine + pop.stress.content
-    local negative = pop.stress.stressed + pop.stress.miserable
+    local positive = pop.stress.joyous + pop.stress.happy + pop.stress.content
+    local neutral = pop.stress.fine
+    local negative = pop.stress.stressed + pop.stress.miserable + pop.stress.unhappy
     
     local lines = {
         "# Dwarven Cooperative " .. fort.name_english,
