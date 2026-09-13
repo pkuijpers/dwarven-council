@@ -62,6 +62,13 @@ describe('prompt port', () => {
     expect(sys).toContain('Fortress Chronicle');
   });
 
+  it('forbids inventing a name for a task assignment not present in the briefing', () => {
+    const sys = buildSystemPrompt(payload.state);
+    expect(sys).toContain(
+      "Never invent a dwarf's name for a task assignment"
+    );
+  });
+
   it('covers every faction the game reports', () => {
     for (const id of Object.keys(payload.state.population.factions)) {
       expect(FACTION_NARRATIVES).toHaveProperty(id);

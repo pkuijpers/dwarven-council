@@ -150,6 +150,7 @@ Submitted by: [Faction]
 - Key Results are specific and measurable
 - Keep the whole assembly short: 1-2 motions that matter most this quarter, not one per faction
 - Ground the theme, debate, and motions in specifics from the briefing above (named dwarves, spokesperson personalities, Fortress Chronicle events, current shortages) rather than generic faction talking points that could apply to any quarter
+- Never invent a dwarf's name for a task assignment (a brewer, a cutter, a carpenter, a training officer). Only name a specific dwarf if that name already appears in the briefing above (a spokesperson, a squad member, an office holder, a Fortress Chronicle event); otherwise describe the assignment generically ("a second brewer is assigned", "a dedicated cutter is named at this Assembly") without inventing an identity for them
 - If the briefing lists a pending petition, address it explicitly: have factions weigh in and have the assembly vote to grant or deny it, rather than only mentioning it in passing
 - Show realistic faction dynamics (sometimes conflict, sometimes consensus)
 - Larger factions have more influence but small factions can form coalitions
